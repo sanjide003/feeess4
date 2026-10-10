@@ -1,0 +1,19 @@
+{
+  "name": "noorul-islam-madrasa-fee-management",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "start": "tsx server.ts",
+    "build": "echo 'No build step required'",
+    "lint": "echo 'No linting required'"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "firebase-admin": "^14.5.0",
+    "tsx": "^4.7.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

@@ -813,8 +813,10 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
     const buildStaffDetailHtml = (staff = {}) => {
       const photoUrl = getPhoto(staff);
       const isActive = staff.isActive !== false;
-      const dutyClasses = Array.isArray(staff.dutyClasses) && staff.dutyClasses.length ? staff.dutyClasses.join(', ') : 'All / Not Assigned';
       const role = staff.role || staff.designation || staff.type || 'Staff Member';
+      const allEntries = getStaffProfileEntries(staff).filter(
+        (entry) => entry && entry.key !== 'name' && !isSensitiveProfileField(entry.key, entry.label) && valueToDisplay(entry.value) !== '--'
+      );
 
       return `
         <div class="space-y-4">
@@ -835,31 +837,20 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
             </div>
           </div>
 
-          <!-- Contact & Duty Grid -->
+          <!-- Dynamic Complete Admin-Added Details Grid -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Phone Number</span>
-              <div class="font-extrabold text-slate-900 text-sm mt-0.5 flex items-center justify-between">
-                <span class="font-mono">${escapeHtml(staff.phone || '--')}</span>
-                ${staff.phone ? `<a href="tel:${escapeHtml(staff.phone)}" class="text-emerald-600 hover:text-emerald-800 p-1" title="Call Staff"><i class="fas fa-phone-alt text-xs"></i></a>` : ''}
-              </div>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Email Address</span>
-              <div class="font-bold text-slate-900 text-sm mt-0.5 truncate">${escapeHtml(staff.email || '--')}</div>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">MSR Identification Number</span>
-              <div class="font-extrabold text-slate-900 text-sm mt-0.5 font-mono">${escapeHtml(staff.msr || '--')}</div>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Assigned Duty Classes</span>
-              <div class="font-extrabold text-indigo-700 text-sm mt-0.5">${escapeHtml(dutyClasses)}</div>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 sm:col-span-2">
-              <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Residential Address</span>
-              <div class="font-medium text-slate-900 text-sm mt-0.5 whitespace-pre-line leading-relaxed">${escapeHtml(staff.address || '--')}</div>
-            </div>
+            ${allEntries.map((entry) => {
+              const isPhone = entry.key === 'phone' || entry.key === 'mobile';
+              const isWide = entry.key === 'address' || String(valueToDisplay(entry.value)).length > 45;
+              return `
+                <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 ${isWide ? 'sm:col-span-2' : ''}">
+                  <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">${escapeHtml(entry.label || toLabel(entry.key))}</span>
+                  <div class="font-bold text-slate-900 text-sm mt-0.5 flex items-center justify-between gap-2 break-words">
+                    <span>${escapeHtml(valueToDisplay(entry.value))}</span>
+                    ${isPhone && entry.value ? `<a href="tel:${escapeHtml(String(entry.value))}" class="text-emerald-600 hover:text-emerald-800 p-1 shrink-0" title="Call Staff"><i class="fas fa-phone-alt text-xs"></i></a>` : ''}
+                  </div>
+                </div>`;
+            }).join('')}
           </div>
 
           <!-- Module Permissions Matrix -->
@@ -874,12 +865,12 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
                 <i class="fas ${staff.canManageResults === true ? 'fa-check-circle text-blue-600' : 'fa-times-circle text-slate-400'}"></i>
                 <span>Result System</span>
               </div>
-              <div class="p-2.5 rounded-xl border border-teal-200 bg-teal-50 text-teal-800 font-bold flex items-center gap-2">
-                <i class="fas fa-check-circle text-teal-600"></i>
+              <div class="p-2.5 rounded-xl border ${staff.canAccessWorksheet !== false ? 'border-teal-200 bg-teal-50 text-teal-800' : 'border-slate-200 bg-slate-50 text-slate-500'} font-bold flex items-center gap-2">
+                <i class="fas ${staff.canAccessWorksheet !== false ? 'fa-check-circle text-teal-600' : 'fa-times-circle text-slate-400'}"></i>
                 <span>Worksheet</span>
               </div>
-              <div class="p-2.5 rounded-xl border ${staff.type === 'Admin' ? 'border-indigo-200 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-slate-50 text-slate-500'} font-bold flex items-center gap-2">
-                <i class="fas ${staff.type === 'Admin' ? 'fa-check-circle text-indigo-600' : 'fa-times-circle text-slate-400'}"></i>
+              <div class="p-2.5 rounded-xl border ${(staff.canAccessAdmin === true || staff.type === 'Admin') ? 'border-indigo-200 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-slate-50 text-slate-500'} font-bold flex items-center gap-2">
+                <i class="fas ${(staff.canAccessAdmin === true || staff.type === 'Admin') ? 'fa-check-circle text-indigo-600' : 'fa-times-circle text-slate-400'}"></i>
                 <span>Admin Panel</span>
               </div>
             </div>
@@ -1069,43 +1060,92 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       return userSession || {};
     };
     const getAllowedPageLabels = () => {
-      const labels = ['Official Portal'];
-      if (userSession?.source === 'firebase' || userSession?.source === 'legacy-admin') return [...labels, 'Admin Dashboard', 'Collection Page', 'Student Page', 'Result Management'];
-      if (userSession?.source === 'staff') {
-        const profile = getCurrentSessionProfile();
-        if (profile.canCollect !== false) labels.push('Collection Page');
-        if (profile.canManageResults === true) labels.push('Result Management');
-        return labels;
-      }
-      if (userSession?.source === 'directory') {
-        const entry = directoryEntries.find((item) => item.id === userSession.id);
-        const access = getPageAccessItem(entry?.categoryId || userSession.categoryId, entry?.id || userSession.id);
-        const authItem = getCategoryAuthItem(entry?.categoryId || userSession.categoryId);
-        if (!access.blocked) {
-          if (access.collection || (authItem.enabled && authItem.targetPage === 'collection')) labels.push('Collection Page');
-          if (access.student || (authItem.enabled && authItem.targetPage === 'student')) labels.push('Student Page');
-        }
-        return labels;
-      }
-      return labels;
+      const perms = evaluateModulePermissions();
+      const labels = [];
+      if (perms.collection) labels.push('Fee Collection');
+      if (perms.worksheet) labels.push('Worksheet Portal');
+      if (perms.result) labels.push('Result System');
+      if (perms.admin) labels.push('Admin Panel');
+      return labels.length ? labels : ['Official Portal'];
     };
 
-    const getStaffProfileEntries = (staff = {}) => [
-      { key: 'name', label: 'Name', value: staff.name },
-      { key: 'role', label: 'Role / Designation', value: staff.role || staff.designation || staff.type },
-      { key: 'type', label: 'Staff Type', value: staff.type },
-      { key: 'phone', label: 'Phone', value: staff.phone },
-      { key: 'email', label: 'Email', value: staff.email },
-      { key: 'msr', label: 'MSR Number', value: staff.msr },
-      { key: 'dutyClasses', label: 'Duty Classes', value: Array.isArray(staff.dutyClasses) ? staff.dutyClasses.join(', ') : staff.dutyClasses },
-      { key: 'address', label: 'Address', value: staff.address },
-      { key: 'status', label: 'Status', value: staff.isActive !== false ? 'Active' : 'Inactive' }
-    ];
+    const getStaffProfileEntries = (staff = {}) => {
+      const seenKeys = new Set([
+        'id', 'photo', 'image', 'logo', 'password', 'passwordHash', 'password_hash',
+        'username', 'user_name', 'usernameRaw', 'username_raw', 'authMeta', 'source',
+        'isActive', 'showInPublic', 'canCollect', 'canManageResults', 'canAccessWorksheet',
+        'canAccessAdmin', 'dutyPaymentDetails', 'displayOrder', 'createdAt', 'updatedAt',
+        'customValues'
+      ]);
+      const entries = [];
+      const pushEntry = (key, label, value) => {
+        if (value === undefined || value === null || String(valueToDisplay(value)).trim() === '' || valueToDisplay(value) === '--') return;
+        entries.push({ key, label, value });
+        seenKeys.add(key);
+      };
+
+      const cat = getDirectoryCategory(staff.type) || directoryCategories.find((c) => normalizeText(c.name) === normalizeText(staff.type));
+      const catFields = normalizeConfiguredFields(cat?.fields || []);
+      const customVals = (staff.customValues && typeof staff.customValues === 'object') ? staff.customValues : {};
+
+      pushEntry('name', 'Full Name', staff.name || customVals.name);
+      pushEntry('role', 'Role / Designation', staff.role || staff.designation || customVals.role || staff.type);
+      pushEntry('type', 'Staff Category', cat?.name || staff.type);
+      pushEntry('phone', 'Phone Number', staff.phone || staff.mobile || customVals.phone);
+      if (staff.email || customVals.email) {
+        pushEntry('email', 'Email Address', staff.email || customVals.email);
+      }
+      pushEntry('msr', 'MSR / Staff ID', staff.msr || customVals.msr);
+      pushEntry('qualification', 'Qualification', staff.qualification || customVals.qualification);
+      pushEntry('subject', 'Subject / Department', staff.subject || customVals.subject);
+      pushEntry('joiningDate', 'Joining Date', staff.joiningDate || customVals.joiningDate);
+      pushEntry('dutyClasses', 'Assigned Duty Classes', Array.isArray(staff.dutyClasses) ? staff.dutyClasses.join(', ') : (staff.dutyClasses || customVals.dutyClasses));
+      pushEntry('address', 'Address', staff.address || customVals.address);
+
+      // Include any category-configured fields
+      catFields.forEach((f) => {
+        if (!f.key || seenKeys.has(f.key) || f.type === 'photo' || f.type === 'password') return;
+        const val = customVals[f.key] !== undefined ? customVals[f.key] : staff[f.key];
+        pushEntry(f.key, f.label || toLabel(f.key), val);
+      });
+
+      // Include any remaining customValues keys added in admin
+      Object.entries(customVals).forEach(([k, v]) => {
+        if (seenKeys.has(k) || isSensitiveProfileField(k, k)) return;
+        pushEntry(k, toLabel(k), v);
+      });
+
+      // Include any remaining top-level fields added in admin
+      Object.entries(staff || {}).forEach(([k, v]) => {
+        if (seenKeys.has(k) || isSensitiveProfileField(k, k) || typeof v === 'object') return;
+        pushEntry(k, toLabel(k), v);
+      });
+
+      pushEntry('status', 'Account Status', staff.isActive !== false ? 'Active' : 'Inactive');
+      return entries;
+    };
 
     const getDirectoryProfileEntries = (entry = {}) => {
       const cat = getDirectoryCategory(entry?.categoryId);
-      const fields = normalizeConfiguredFields(cat?.fields || []);
-      return fields.map((f) => ({ key: f.key, label: f.label, value: entry?.values?.[f.key] }));
+      const authItem = getCategoryAuthItem(entry?.categoryId);
+      const hiddenKeys = new Set([authItem.usernameField, authItem.passwordField, 'photo', 'image', 'logo'].filter(Boolean));
+      const fields = normalizeConfiguredFields(cat?.fields || []).filter((f) => f.key && !hiddenKeys.has(f.key) && f.type !== 'photo' && f.type !== 'password');
+      const result = [];
+      const usedKeys = new Set(hiddenKeys);
+      fields.forEach((f) => {
+        const val = entry?.values?.[f.key];
+        if (val !== undefined && val !== null && String(valueToDisplay(val)).trim() !== '' && valueToDisplay(val) !== '--') {
+          result.push({ key: f.key, label: f.label || toLabel(f.key), value: val });
+          usedKeys.add(f.key);
+        }
+      });
+      Object.entries(entry?.values || {}).forEach(([k, v]) => {
+        if (usedKeys.has(k) || isSensitiveProfileField(k, k)) return;
+        if (v !== undefined && v !== null && String(valueToDisplay(v)).trim() !== '' && valueToDisplay(v) !== '--') {
+          result.push({ key: k, label: toLabel(k), value: v });
+        }
+      });
+      return result;
     };
 
     const openMyProfileModal = () => {
@@ -1114,26 +1154,42 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       const label = isDirectory ? (profile.values?.name || userSession?.name || 'Staff Member') : (profile.name || userSession?.name || 'Staff Member');
       const userType = isDirectory ? (getDirectoryCategory(profile.categoryId)?.name || userSession?.type || 'Staff') : (profile.role || profile.designation || profile.type || userSession?.type || 'Staff');
 
-      const rawPhoto = isDirectory ? (profile.values?.photo || profile.values?.image) : (profile.photo || profile.image);
+      const rawPhoto = isDirectory ? (profile.values?.photo || profile.values?.image) : (profile.photo || profile.image || profile.customValues?.photo);
       const hasPhoto = Boolean(rawPhoto && typeof rawPhoto === 'string' && rawPhoto.trim() !== '' && !rawPhoto.includes('assets/images/logo.png'));
 
-      const phone = isDirectory ? (profile.values?.phone || profile.values?.mobile || userSession?.phone || '') : (profile.phone || userSession?.phone || '');
-      const email = isDirectory ? (profile.values?.email || userSession?.email || '') : (profile.email || userSession?.email || userSession?.username || '');
-      const msr = isDirectory ? (profile.values?.msr || profile.values?.id || '') : (profile.msr || profile.id || '');
-      const dutyClasses = isDirectory ? (profile.values?.dutyClasses || '') : (Array.isArray(profile.dutyClasses) ? profile.dutyClasses.join(', ') : (profile.dutyClasses || ''));
-      const status = profile.isActive !== false ? 'Active' : 'Inactive';
       const access = getAllowedPageLabels();
       const instName = resolveInstitutionName(institutionConfig) || 'Madrasa / Institution';
       const instReg = institutionConfig?.regNo || institutionConfig?.code || '';
+      const initialChar = String(label || 'S').trim().charAt(0).toUpperCase() || 'S';
+
+      const detailEntries = isDirectory
+        ? getDirectoryProfileEntries(profile)
+        : getStaffProfileEntries(profile);
+      const filteredDetails = detailEntries.filter((item) => item && item.key !== 'name' && valueToDisplay(item.value) !== '--');
+
+      const detailsRowsHtml = filteredDetails.length
+        ? filteredDetails.map((item) => {
+            const valStr = valueToDisplay(item.value);
+            const isLong = item.key === 'address' || valStr.length > 34;
+            return isLong
+              ? `<div class="py-1.5 border-b border-slate-200/60 last:border-b-0">
+                   <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">${escapeHtml(item.label || toLabel(item.key))}</div>
+                   <div class="font-bold text-slate-800 text-xs mt-0.5 break-words whitespace-pre-line">${escapeHtml(valStr)}</div>
+                 </div>`
+              : `<div class="flex items-start justify-between gap-3 py-1.5 border-b border-slate-200/60 last:border-b-0 text-xs">
+                   <span class="text-slate-500 font-semibold shrink-0">${escapeHtml(item.label || toLabel(item.key))}</span>
+                   <span class="font-bold ${item.key === 'status' ? 'text-emerald-600 uppercase text-[11px]' : 'text-slate-800'} text-right break-all">${escapeHtml(valStr)}</span>
+                 </div>`;
+          }).join('')
+        : `<div class="text-xs text-slate-400 text-center py-2">No additional profile details found.</div>`;
 
       const photoHtml = hasPhoto
-        ? `<div class="relative mx-auto -mt-14 w-28 h-28 rounded-2xl p-1 bg-white shadow-xl border border-slate-200">
-             <img src="${escapeHtml(rawPhoto)}" class="w-full h-full rounded-xl object-cover bg-slate-100" alt="${escapeHtml(label)}" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'w-full h-full rounded-xl bg-slate-100 border border-slate-200 flex flex-col items-center justify-center text-slate-300\\'><i class=\\'fas fa-user text-3xl mb-1 text-slate-300\\'></i><span class=\\'text-[9px] font-bold text-slate-400 uppercase\\'>No Photo</span></div>';">
+        ? `<div class="relative mx-auto -mt-14 w-24 h-24 rounded-2xl p-1 bg-white shadow-xl border border-slate-200">
+             <img src="${escapeHtml(rawPhoto)}" class="w-full h-full rounded-xl object-cover bg-slate-100" alt="${escapeHtml(label)}" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'w-full h-full rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 text-2xl font-black\\'>${escapeHtml(initialChar)}</div>';">
            </div>`
-        : `<div class="relative mx-auto -mt-14 w-28 h-28 rounded-2xl p-1 bg-white shadow-xl border border-slate-200">
-             <div class="w-full h-full rounded-xl bg-slate-100 border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400">
-               <i class="fas fa-user text-3xl text-slate-300 mb-1"></i>
-               <span class="text-[9px] font-bold uppercase tracking-wider text-slate-400">No Photo</span>
+        : `<div class="relative mx-auto -mt-14 w-24 h-24 rounded-2xl p-1 bg-white shadow-xl border border-slate-200">
+             <div class="w-full h-full rounded-xl bg-indigo-50 border border-indigo-100 flex flex-col items-center justify-center text-indigo-600">
+               <span class="text-3xl font-black leading-none">${escapeHtml(initialChar)}</span>
              </div>
            </div>`;
 
@@ -1141,15 +1197,15 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
         <div class="w-full bg-white select-none">
           <!-- Top Lanyard Slot Cutout Bar -->
           <div class="bg-slate-900 pt-3 pb-2 px-4 flex justify-center">
-            <div class="w-14 h-2.5 rounded-full bg-slate-800 border border-slate-700/80 shadow-inner"></div>
+            <div class="w-14 h-2 rounded-full bg-slate-800 border border-slate-700/80 shadow-inner"></div>
           </div>
 
           <!-- Institution Header Banner -->
-          <div class="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white px-5 pt-3 pb-16 text-center relative">
-            <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest bg-white/10 text-emerald-300 border border-white/10 mb-1.5">
-              <i class="fas fa-id-badge text-emerald-400"></i> Staff Identity Card
+          <div class="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white px-5 pt-2.5 pb-16 text-center relative">
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest bg-white/10 text-emerald-300 border border-white/10 mb-1">
+              <i class="fas fa-id-badge text-emerald-400"></i> Official Identity Card
             </div>
-            <h4 class="text-base font-black tracking-tight text-white uppercase">${escapeHtml(instName)}</h4>
+            <h4 class="text-sm sm:text-base font-black tracking-tight text-white uppercase">${escapeHtml(instName)}</h4>
             ${instReg ? `<p class="text-[10px] font-semibold text-slate-400 tracking-wider">Reg No: ${escapeHtml(instReg)}</p>` : ''}
           </div>
 
@@ -1158,70 +1214,43 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
             ${photoHtml}
 
             <!-- Identity Core -->
-            <div class="text-center mt-3">
-              <h3 class="text-xl font-black text-slate-900 tracking-tight leading-tight">${escapeHtml(label)}</h3>
+            <div class="text-center mt-2.5">
+              <h3 class="text-lg sm:text-xl font-black text-slate-900 tracking-tight leading-tight">${escapeHtml(label)}</h3>
               <div class="mt-1">
-                <span class="inline-block px-3 py-0.5 rounded-full text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-200">
+                <span class="inline-block px-3 py-0.5 rounded-full text-[11px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">
                   ${escapeHtml(userType)}
                 </span>
               </div>
             </div>
 
-            <!-- Details List -->
-            <div class="mt-5 space-y-2 text-left bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80">
-              ${phone ? `
-                <div class="flex items-center justify-between gap-2 text-xs">
-                  <span class="text-slate-500 font-semibold flex items-center gap-1.5"><i class="fas fa-phone-alt text-slate-400 text-[11px] w-3.5"></i> Phone</span>
-                  <span class="font-bold text-slate-800 text-right truncate">${escapeHtml(phone)}</span>
-                </div>` : ''}
-
-              ${email ? `
-                <div class="flex items-center justify-between gap-2 text-xs">
-                  <span class="text-slate-500 font-semibold flex items-center gap-1.5"><i class="fas fa-envelope text-slate-400 text-[11px] w-3.5"></i> Email</span>
-                  <span class="font-bold text-slate-800 text-right truncate max-w-[180px]">${escapeHtml(email)}</span>
-                </div>` : ''}
-
-              ${msr ? `
-                <div class="flex items-center justify-between gap-2 text-xs">
-                  <span class="text-slate-500 font-semibold flex items-center gap-1.5"><i class="fas fa-hashtag text-slate-400 text-[11px] w-3.5"></i> ID / MSR</span>
-                  <span class="font-bold text-slate-800 text-right">${escapeHtml(msr)}</span>
-                </div>` : ''}
-
-              ${dutyClasses ? `
-                <div class="flex items-center justify-between gap-2 text-xs">
-                  <span class="text-slate-500 font-semibold flex items-center gap-1.5"><i class="fas fa-chalkboard text-slate-400 text-[11px] w-3.5"></i> Classes</span>
-                  <span class="font-bold text-slate-800 text-right">${escapeHtml(dutyClasses)}</span>
-                </div>` : ''}
-
-              <div class="flex items-center justify-between gap-2 text-xs">
-                <span class="text-slate-500 font-semibold flex items-center gap-1.5"><i class="fas fa-circle text-emerald-500 text-[10px] w-3.5"></i> Status</span>
-                <span class="font-bold text-emerald-600 uppercase text-[11px]">${escapeHtml(status)}</span>
-              </div>
+            <!-- Complete Admin-Configured Details List -->
+            <div class="mt-4 text-left bg-slate-50/90 px-3.5 py-2.5 rounded-2xl border border-slate-200/80 max-h-60 overflow-y-auto">
+              ${detailsRowsHtml}
             </div>
 
             <!-- Department Access Badges -->
-            <div class="mt-4 text-center">
-              <div class="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-1.5">Authorized Department Access</div>
+            <div class="mt-3.5 text-center">
+              <div class="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-1.5">Authorized Portal Access</div>
               <div class="flex flex-wrap gap-1.5 justify-center">
                 ${access.map((item) => `
                   <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                    <i class="fas fa-check text-emerald-500 text-[9px]"></i>
+                    <i class="fas fa-check-circle text-emerald-500 text-[9px]"></i>
                     ${escapeHtml(item)}
                   </span>
                 `).join('')}
               </div>
             </div>
 
-            <!-- Card Bottom Bar -->
-            <div class="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-[9px] text-slate-400 font-bold uppercase tracking-wider">
-              <span>Verified ID</span>
-              <span>Official Record</span>
+            <!-- Action Buttons: Logout & Close at Bottom of ID Card -->
+            <div class="mt-5 pt-3.5 border-t border-slate-100 flex items-center gap-2.5">
+              <button type="button" id="official-id-card-logout-btn" class="flex-1 py-2.5 px-3 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-sm active:scale-95 transition-all cursor-pointer border-none flex items-center justify-center gap-1.5">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
+              </button>
+              <button type="button" id="official-id-card-done-btn" class="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl active:scale-95 transition-all cursor-pointer border border-slate-200">
+                Close
+              </button>
             </div>
-
-            <!-- Action Button -->
-            <button type="button" id="official-id-card-done-btn" class="mt-4 w-full py-2.5 bg-slate-900 hover:bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-md active:scale-95 transition-all cursor-pointer border-none">
-              Close ID Card
-            </button>
           </div>
         </div>
       `;
@@ -1229,6 +1258,11 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       openIdCardModal(idCardHtml);
 
       document.getElementById('official-id-card-done-btn')?.addEventListener('click', closeIdCardModal);
+      document.getElementById('official-id-card-logout-btn')?.addEventListener('click', () => {
+        localStorage.removeItem(OFFICIAL_SESSION_KEY);
+        window.AppSession?.clearAll?.();
+        window.location.href = 'index.html';
+      });
     };
 
     const renderHome = () => {
@@ -2040,13 +2074,33 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       const userName = userSession?.name || (isAdmin ? 'Administrator' : 'Staff Member');
       const userRole = isAdmin ? 'Super Admin' : (userSession?.type || 'Staff');
 
+      const profile = getCurrentSessionProfile() || {};
+      const isDirectory = userSession?.source === 'directory';
+      const resolvedName = isDirectory
+        ? (profile.values?.name || userSession?.name || 'Staff Member')
+        : (profile.name || userSession?.name || (isAdmin ? 'Administrator' : 'Staff Member'));
+      const rawPhoto = isDirectory
+        ? (profile.values?.photo || profile.values?.image || '')
+        : (profile.photo || profile.image || profile.customValues?.photo || '');
+      const hasValidPhoto = Boolean(rawPhoto && typeof rawPhoto === 'string' && rawPhoto.trim() !== '' && !rawPhoto.includes('assets/images/logo.png'));
+
       const userLineEl = document.getElementById('official-user-line');
-      if (userLineEl) userLineEl.textContent = `${userName} (${userRole})`;
+      if (userLineEl) userLineEl.textContent = `${resolvedName} (${userRole})`;
 
       const staffNameDisplay = document.getElementById('staff-name-display');
-      if (staffNameDisplay) staffNameDisplay.textContent = userName;
+      if (staffNameDisplay) staffNameDisplay.textContent = resolvedName;
       const staffRoleDisplay = document.getElementById('staff-role-display');
       if (staffRoleDisplay) staffRoleDisplay.textContent = userRole;
+
+      const headerAvatarBox = document.getElementById('official-header-avatar-box');
+      if (headerAvatarBox) {
+        const initialChar = String(resolvedName || 'S').trim().charAt(0).toUpperCase() || 'S';
+        if (hasValidPhoto) {
+          headerAvatarBox.innerHTML = `<img src="${escapeHtml(rawPhoto)}" alt="${escapeHtml(resolvedName)}" class="w-full h-full object-cover rounded-full" onerror="this.onerror=null;this.parentElement.innerHTML='<span class=\\'text-xs font-extrabold text-indigo-700\\'>${escapeHtml(initialChar)}</span>';">`;
+        } else {
+          headerAvatarBox.innerHTML = `<span class="text-xs font-extrabold text-indigo-700">${escapeHtml(initialChar)}</span>`;
+        }
+      }
 
       renderAll();
       if (isWorksheetPage) {
@@ -2055,9 +2109,13 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
         setTab(validTabs.includes(rawHash) ? rawHash : 'students');
       } else {
         setTab('dashboard');
-        document.getElementById('official-my-profile-btn')?.addEventListener('click', () => {
-          openMyProfileModal();
-        });
+        const profileBtn = document.getElementById('official-my-profile-btn');
+        if (profileBtn && !profileBtn.dataset.boundProfileModal) {
+          profileBtn.dataset.boundProfileModal = 'true';
+          profileBtn.addEventListener('click', () => {
+            openMyProfileModal();
+          });
+        }
       }
     };
 

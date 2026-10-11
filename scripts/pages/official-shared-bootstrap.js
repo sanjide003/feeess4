@@ -10,6 +10,10 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
     let directoryCategories = [];
     let academicYears = [];
     let activeAcademicYearId = '';
+    let allFeeItems = [];
+    let allPayments = [];
+    let allExams = [];
+    let allMarks = {};
     let institutionConfig = {};
     let categoryAuthConfig = { categories: {} };
     let pageAccessConfig = { categories: {}, overrides: {} };
@@ -91,14 +95,35 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
     // EXCEL SPREADSHEET BUILDER CONFIG
     // ==========================================
     let builderConfig = {
-      classId: '', paper: 'A4', orientation: 'portrait', sortBy: 'name', groupBy: 'mixed',
-      showHeader: false, repeatHeader: false, customTitle: '', activeTab: 'home',
+      sourceType: 'students', // 'students' | 'staff' | 'fees' | 'results'
+      academicYearId: '',
+      classId: 'ALL',
+      staffCategory: 'ALL',
+      examId: 'ALL',
+      feeItemId: 'ALL',
+      paper: 'A4',
+      orientation: 'portrait',
+      zoom: 100,
+      sortBy: 'name',
+      groupBy: 'mixed',
+      borderMode: 'grid', // 'grid' | 'outer' | 'none'
+      rowDensity: 'normal', // 'compact' | 'normal' | 'comfortable'
+      showHeader: true,
+      repeatHeader: true,
+      showSignatures: false,
+      sigLeft: 'Class Teacher',
+      sigCenter: 'Checked By',
+      sigRight: 'Principal / Head',
+      customTitle: 'INSTITUTION WORKSHEET & REGISTER',
+      customSubtitle: '',
+      activeTab: 'data',
       columns: [
-        { id: 'col_sno', field: 'SNO', title: 'S.No', width: 'auto' },
-        { id: 'col_name', field: 'name', title: 'Student Name', width: 'auto' },
-        { id: 'col_c1', field: 'CUSTOM', title: 'Custom Sp.', width: '150px' },
-        { id: 'col_c2', field: 'CUSTOM', title: 'Custom Sp.', width: '150px' },
-        { id: 'col_c3', field: 'CUSTOM', title: 'Custom Sp.', width: '150px' }
+        { id: 'col_sno', field: 'SNO', title: 'S.No', width: '50px' },
+        { id: 'col_adm', field: 'adm', title: 'Adm No.', width: '90px' },
+        { id: 'col_name', field: 'name', title: 'Student Name', width: '200px' },
+        { id: 'col_class', field: 'class', title: 'Class', width: '80px' },
+        { id: 'col_mobile', field: 'mobile', title: 'Mobile', width: '120px' },
+        { id: 'col_c1', field: 'CUSTOM', title: 'Remarks', width: '140px' }
       ]
     };
 
@@ -1993,81 +2018,557 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
         </div>`;
     };
 
-    const availableDataFields = [
-      { id: 'SNO', label: 'Serial No. (Auto)' },
-      { id: 'name', label: 'Student Name' },
-      { id: 'adm', label: 'Admission No.' },
-      { id: 'uid', label: 'UID / Roll No.' },
-      { id: 'class', label: 'Class' },
-      { id: 'gender', label: 'Gender' },
-      { id: 'dob', label: 'Date of Birth' },
-      { id: 'adm_date', label: 'Admission Date' },
-      { id: 'father', label: 'Father Name' },
-      { id: 'mobile', label: 'Father Mobile' },
-      { id: 'mother', label: 'Mother Name' },
-      { id: 'motherMobile', label: 'Mother Mobile' },
-      { id: 'adhaar', label: 'Aadhaar No.' },
-      { id: 'status', label: 'Status' },
-      { id: 'concessionFee', label: 'Concession Fee' },
-      { id: 'address', label: 'Address' },
-      { id: 'CUSTOM', label: 'Custom/Blank Space' }
-    ];
+    const getAvailableFieldsForSource = (sourceType = builderConfig.sourceType) => {
+      if (sourceType === 'staff') {
+        return [
+          { id: 'SNO', label: 'Serial No. (Auto)' },
+          { id: 'name', label: 'Staff / Member Name' },
+          { id: 'category', label: 'Category / Type' },
+          { id: 'role', label: 'Designation / Role' },
+          { id: 'department', label: 'Department / Subject' },
+          { id: 'qualification', label: 'Qualification' },
+          { id: 'mobile', label: 'Mobile Number' },
+          { id: 'whatsapp', label: 'WhatsApp Number' },
+          { id: 'email', label: 'Email ID' },
+          { id: 'blood', label: 'Blood Group' },
+          { id: 'joinDate', label: 'Joining Date' },
+          { id: 'place', label: 'Place / Address' },
+          { id: 'status', label: 'Status' },
+          { id: 'CUSTOM', label: 'Custom / Blank Column' }
+        ];
+      }
+      if (sourceType === 'fees') {
+        return [
+          { id: 'SNO', label: 'Serial No. (Auto)' },
+          { id: 'adm', label: 'Admission No.' },
+          { id: 'uid', label: 'UID / Roll No.' },
+          { id: 'name', label: 'Student Name' },
+          { id: 'class', label: 'Class' },
+          { id: 'gender', label: 'Gender' },
+          { id: 'father', label: 'Father Name' },
+          { id: 'mobile', label: 'Mobile Number' },
+          { id: 'feeTotal', label: 'Total Fee Assigned' },
+          { id: 'concession', label: 'Concession / Discount' },
+          { id: 'netPayable', label: 'Net Payable Fee' },
+          { id: 'paidAmount', label: 'Paid Amount' },
+          { id: 'balanceDue', label: 'Balance Due' },
+          { id: 'feeStatus', label: 'Payment Status' },
+          { id: 'lastPaymentDate', label: 'Last Payment Date' },
+          { id: 'receiptNos', label: 'Receipt No(s)' },
+          { id: 'CUSTOM', label: 'Custom / Blank Column' }
+        ];
+      }
+      if (sourceType === 'results') {
+        const activeExam = allExams.find((ex) => ex.id === builderConfig.examId);
+        const subjectFields = Array.isArray(activeExam?.subjects)
+          ? activeExam.subjects.map((sub, idx) => {
+              const subName = typeof sub === 'string' ? sub : (sub?.name || sub?.title || sub?.subject || `Subject ${idx + 1}`);
+              const subKey = typeof sub === 'string' ? sub : (sub?.id || sub?.code || subName);
+              return { id: `SUB_${subKey}`, label: `Sub: ${subName}` };
+            })
+          : [];
+        return [
+          { id: 'SNO', label: 'Serial No. (Auto)' },
+          { id: 'adm', label: 'Admission No.' },
+          { id: 'uid', label: 'UID / Roll No.' },
+          { id: 'name', label: 'Student Name' },
+          { id: 'class', label: 'Class' },
+          { id: 'gender', label: 'Gender' },
+          { id: 'examName', label: 'Exam Name' },
+          ...subjectFields,
+          { id: 'obtainedMarks', label: 'Marks Obtained' },
+          { id: 'maxMarks', label: 'Max Marks' },
+          { id: 'percentage', label: 'Percentage (%)' },
+          { id: 'grade', label: 'Grade' },
+          { id: 'resultStatus', label: 'Pass / Fail Status' },
+          { id: 'rank', label: 'Class Rank' },
+          { id: 'CUSTOM', label: 'Custom / Blank Column' }
+        ];
+      }
+      return [
+        { id: 'SNO', label: 'Serial No. (Auto)' },
+        { id: 'name', label: 'Student Name' },
+        { id: 'adm', label: 'Admission No.' },
+        { id: 'uid', label: 'UID / Roll No.' },
+        { id: 'class', label: 'Class' },
+        { id: 'gender', label: 'Gender' },
+        { id: 'dob', label: 'Date of Birth' },
+        { id: 'adm_date', label: 'Admission Date' },
+        { id: 'father', label: 'Father Name' },
+        { id: 'mobile', label: 'Father Mobile' },
+        { id: 'mother', label: 'Mother Name' },
+        { id: 'motherMobile', label: 'Mother Mobile' },
+        { id: 'adhaar', label: 'Aadhaar No.' },
+        { id: 'status', label: 'Status' },
+        { id: 'concessionFee', label: 'Concession Fee' },
+        { id: 'address', label: 'Address' },
+        { id: 'CUSTOM', label: 'Custom / Blank Column' }
+      ];
+    };
+
+    const getStudentsForBuilderYear = () => {
+      const selectedYear = builderConfig.academicYearId || officialFilters.academicYearId || activeAcademicYearId;
+      return allStudents.map((student) => {
+        if (!selectedYear || (activeAcademicYearId && selectedYear === activeAcademicYearId)) {
+          const isGraduatedInActive = String(student.class || '').toUpperCase() === 'GRADUATED';
+          if (isGraduatedInActive) return null;
+          return student;
+        }
+        const yearRecord = student.academicYears?.[selectedYear];
+        if (!yearRecord) return null;
+        return {
+          ...student,
+          class: yearRecord.class || student.class,
+          status: yearRecord.status || student.status,
+          isActive: yearRecord.status ? yearRecord.status === 'active' : student.isActive,
+          concessionFee: yearRecord.concessionFee !== undefined ? yearRecord.concessionFee : student.concessionFee
+        };
+      }).filter(Boolean);
+    };
+
+    const buildUnifiedStaffRecords = () => {
+      const combined = [];
+      const seenKeys = new Set();
+
+      allStaff.forEach((st) => {
+        const name = String(st.name || '').trim();
+        const cat = String(st.type || st.category || 'Staff').trim();
+        const mobile = String(st.mobile || st.phone || '').trim();
+        const key = `${name.toLowerCase()}|${mobile}`;
+        seenKeys.add(key);
+        combined.push({
+          id: st.id || `staff_${combined.length}`,
+          name: name || '--',
+          category: cat || 'Staff',
+          role: st.role || st.designation || st.position || '--',
+          department: st.department || st.subject || '--',
+          qualification: st.qualification || '--',
+          mobile: mobile || '--',
+          whatsapp: st.whatsapp || mobile || '--',
+          email: st.email || '--',
+          blood: st.bloodGroup || st.blood || '--',
+          joinDate: st.joinDate || st.joiningDate || '--',
+          place: st.place || st.address || '--',
+          status: st.isActive === false ? 'Inactive' : 'Active'
+        });
+      });
+
+      const catMap = new Map();
+      directoryCategories.forEach((c) => {
+        if (c && c.id) catMap.set(c.id, c.name || c.title || c.id);
+      });
+
+      directoryEntries.forEach((entry) => {
+        const vals = entry.values || entry || {};
+        const name = String(vals.name || entry.name || '').trim();
+        const mobile = String(vals.mobile || vals.phone || entry.mobile || '').trim();
+        const key = `${name.toLowerCase()}|${mobile}`;
+        if (name && seenKeys.has(key)) return;
+        if (name) seenKeys.add(key);
+        const catName = catMap.get(entry.categoryId) || entry.categoryName || entry.category || vals.category || 'Management / Directory';
+        combined.push({
+          id: entry.id || `dir_${combined.length}`,
+          name: name || '--',
+          category: String(catName).trim(),
+          role: vals.role || vals.designation || vals.position || entry.role || '--',
+          department: vals.department || vals.subject || '--',
+          qualification: vals.qualification || '--',
+          mobile: mobile || '--',
+          whatsapp: vals.whatsapp || mobile || '--',
+          email: vals.email || entry.email || '--',
+          blood: vals.blood || vals.bloodGroup || '--',
+          joinDate: vals.joinDate || '--',
+          place: vals.place || vals.address || '--',
+          status: entry.isActive === false ? 'Inactive' : 'Active'
+        });
+      });
+
+      return combined;
+    };
+
+    const computeStudentFeeRecord = (student, yearId) => {
+      const cls = getStudentClass(student);
+      const selectedFeeItem = builderConfig.feeItemId || 'ALL';
+      const relevantFeeItems = allFeeItems.filter((item) => {
+        if (item.isActive === false) return false;
+        if (yearId && item.academicYear && item.academicYear !== yearId) return false;
+        if (selectedFeeItem !== 'ALL' && item.id !== selectedFeeItem) return false;
+        return true;
+      });
+
+      let feeTotal = 0;
+      relevantFeeItems.forEach((item) => {
+        const classAmt = item.classAmounts?.[cls] ?? item.amounts?.[cls] ?? item.amount ?? item.defaultAmount ?? 0;
+        const parsed = parseFloat(classAmt);
+        if (!isNaN(parsed) && parsed > 0) feeTotal += parsed;
+      });
+
+      const studentPayments = allPayments.filter((p) => {
+        if (p.studentId !== student.id && String(p.adm || '') !== String(student.adm || '')) return false;
+        if (p.isDeleted || p.status === 'cancelled') return false;
+        if (yearId && p.academicYear && p.academicYear !== yearId) return false;
+        if (selectedFeeItem !== 'ALL' && p.feeItemId && p.feeItemId !== selectedFeeItem) return false;
+        return true;
+      });
+
+      let paidAmount = 0;
+      let paymentDiscount = 0;
+      const receipts = [];
+      let latestDate = '';
+
+      studentPayments.forEach((p) => {
+        const amt = parseFloat(p.amount ?? p.paidAmount ?? 0) || 0;
+        const disc = parseFloat(p.discount ?? 0) || 0;
+        paidAmount += amt;
+        paymentDiscount += disc;
+        if (p.receiptNo || p.receiptNumber) receipts.push(String(p.receiptNo || p.receiptNumber));
+        const pDate = p.date || p.paymentDate || '';
+        if (pDate && (!latestDate || String(pDate) > String(latestDate))) latestDate = pDate;
+      });
+
+      const studentConcession = selectedFeeItem === 'ALL' ? (parseFloat(student.concessionFee || 0) || 0) : 0;
+      const totalConcession = studentConcession + paymentDiscount;
+      if (feeTotal === 0 && paidAmount > 0) feeTotal = paidAmount + totalConcession;
+
+      const netPayable = Math.max(0, feeTotal - totalConcession);
+      const balanceDue = Math.max(0, netPayable - paidAmount);
+      let feeStatus = 'Unpaid';
+      if (netPayable === 0 && paidAmount === 0) feeStatus = 'No Fee Set';
+      else if (balanceDue <= 0 && (paidAmount > 0 || netPayable === 0)) feeStatus = 'Paid';
+      else if (paidAmount > 0 && balanceDue > 0) feeStatus = 'Partial';
+
+      return {
+        ...student,
+        class: cls,
+        feeTotal: feeTotal.toFixed(0),
+        concession: totalConcession.toFixed(0),
+        netPayable: netPayable.toFixed(0),
+        paidAmount: paidAmount.toFixed(0),
+        balanceDue: balanceDue.toFixed(0),
+        feeStatus,
+        lastPaymentDate: latestDate ? formatDate(latestDate) : '--',
+        receiptNos: receipts.length > 0 ? receipts.join(', ') : '--'
+      };
+    };
+
+    const computeGradeFromPercent = (pct) => {
+      if (pct >= 90) return 'A+';
+      if (pct >= 80) return 'A';
+      if (pct >= 70) return 'B+';
+      if (pct >= 60) return 'B';
+      if (pct >= 50) return 'C+';
+      if (pct >= 40) return 'C';
+      return 'D (Fail)';
+    };
+
+    const computeStudentResultRows = (studentsList, yearId) => {
+      let targetExams = allExams.filter((ex) => !yearId || !ex.academicYear || ex.academicYear === yearId);
+      if (builderConfig.examId && builderConfig.examId !== 'ALL') {
+        targetExams = targetExams.filter((ex) => ex.id === builderConfig.examId);
+      }
+      if (targetExams.length === 0 && allExams.length > 0) {
+        targetExams = builderConfig.examId !== 'ALL'
+          ? allExams.filter((ex) => ex.id === builderConfig.examId)
+          : [allExams[0]];
+      }
+
+      const activeExam = targetExams[0] || null;
+      const examName = activeExam ? (activeExam.name || activeExam.title || activeExam.examName || 'Exam') : 'All Exams';
+
+      const rows = studentsList.map((student) => {
+        const cls = getStudentClass(student);
+        let markDoc = null;
+        if (activeExam) {
+          markDoc = allMarks[`${activeExam.id}_${student.id}`] || allMarks[`${activeExam.id}_${student.adm}`] || null;
+        }
+        if (!markDoc) {
+          const fallbackKey = Object.keys(allMarks).find((k) => k.endsWith(`_${student.id}`));
+          if (fallbackKey) markDoc = allMarks[fallbackKey];
+        }
+
+        const subjectScores = markDoc?.marks || markDoc?.subjects || markDoc?.scores || {};
+        let obtained = 0;
+        let maxMarks = 0;
+        const dynamicSubValues = {};
+
+        if (Array.isArray(activeExam?.subjects) && activeExam.subjects.length > 0) {
+          activeExam.subjects.forEach((sub, idx) => {
+            const subName = typeof sub === 'string' ? sub : (sub?.name || sub?.title || sub?.subject || `Subject ${idx + 1}`);
+            const subKey = typeof sub === 'string' ? sub : (sub?.id || sub?.code || subName);
+            const subMax = parseFloat(sub?.maxMarks ?? sub?.max ?? activeExam?.maxMarksPerSubject ?? 100) || 100;
+            const rawVal = subjectScores[subKey] ?? subjectScores[subName] ?? markDoc?.[subKey];
+            const numVal = parseFloat(rawVal);
+            if (!isNaN(numVal)) {
+              obtained += numVal;
+              maxMarks += subMax;
+              dynamicSubValues[`SUB_${subKey}`] = String(numVal);
+            } else {
+              dynamicSubValues[`SUB_${subKey}`] = rawVal !== undefined && rawVal !== '' ? String(rawVal) : '--';
+            }
+          });
+        } else if (subjectScores && typeof subjectScores === 'object') {
+          Object.entries(subjectScores).forEach(([k, v]) => {
+            const numVal = parseFloat(v);
+            if (!isNaN(numVal)) {
+              obtained += numVal;
+              maxMarks += 100;
+            }
+            dynamicSubValues[`SUB_${k}`] = String(v ?? '--');
+          });
+        }
+
+        if (markDoc?.totalMarks !== undefined || markDoc?.obtainedMarks !== undefined) {
+          obtained = parseFloat(markDoc.totalMarks ?? markDoc.obtainedMarks) || obtained;
+        }
+        if (markDoc?.maxMarks !== undefined) {
+          maxMarks = parseFloat(markDoc.maxMarks) || maxMarks;
+        }
+
+        const pct = maxMarks > 0 ? (obtained / maxMarks) * 100 : 0;
+        const hasMarks = maxMarks > 0 || obtained > 0 || Object.keys(subjectScores).length > 0;
+
+        return {
+          ...student,
+          class: cls,
+          examName,
+          ...dynamicSubValues,
+          obtainedMarks: hasMarks ? obtained.toFixed(0) : '--',
+          maxMarks: hasMarks && maxMarks > 0 ? maxMarks.toFixed(0) : '--',
+          percentage: hasMarks && maxMarks > 0 ? `${pct.toFixed(1)}%` : '--',
+          _pctNum: hasMarks ? pct : -1,
+          grade: hasMarks && maxMarks > 0 ? (markDoc?.grade || computeGradeFromPercent(pct)) : '--',
+          resultStatus: hasMarks ? (markDoc?.status || (pct >= 40 ? 'Passed' : 'Failed')) : 'Pending',
+          rank: '--'
+        };
+      });
+
+      const ranked = [...rows].filter((r) => r._pctNum >= 0).sort((a, b) => b._pctNum - a._pctNum);
+      ranked.forEach((item, idx) => {
+        item.rank = String(idx + 1);
+      });
+
+      return rows;
+    };
+
+    const getBuilderDatasetRows = () => {
+      const yearId = builderConfig.academicYearId || officialFilters.academicYearId || activeAcademicYearId;
+
+      if (builderConfig.sourceType === 'staff') {
+        let staffRows = buildUnifiedStaffRecords();
+        if (builderConfig.staffCategory && builderConfig.staffCategory !== 'ALL') {
+          staffRows = staffRows.filter((s) => s.category === builderConfig.staffCategory);
+        }
+        if (builderConfig.sortBy === 'name') {
+          staffRows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+        } else if (builderConfig.sortBy === 'category') {
+          staffRows.sort((a, b) => String(a.category || '').localeCompare(String(b.category || '')) || String(a.name || '').localeCompare(String(b.name || '')));
+        }
+        return staffRows;
+      }
+
+      const yearStudents = getStudentsForBuilderYear();
+      let filteredStudents = [];
+      if (!builderConfig.classId) {
+        filteredStudents = [];
+      } else if (builderConfig.classId === 'ALL') {
+        filteredStudents = [...yearStudents];
+      } else {
+        filteredStudents = yearStudents.filter((s) => getStudentClass(s) === builderConfig.classId);
+      }
+
+      let rows = [];
+      if (builderConfig.sourceType === 'fees') {
+        rows = filteredStudents.map((s) => computeStudentFeeRecord(s, yearId));
+      } else if (builderConfig.sourceType === 'results') {
+        rows = computeStudentResultRows(filteredStudents, yearId);
+      } else {
+        rows = filteredStudents.map((s) => ({ ...s, class: getStudentClass(s) }));
+      }
+
+      if (builderConfig.sortBy === 'name') {
+        rows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+      } else if (builderConfig.sortBy === 'adm') {
+        rows.sort((a, b) => String(a.adm || '').localeCompare(String(b.adm || ''), undefined, { numeric: true }));
+      } else if (builderConfig.sortBy === 'class') {
+        rows.sort((a, b) => String(a.class || '').localeCompare(String(b.class || ''), undefined, { numeric: true }) || String(a.name || '').localeCompare(String(b.name || '')));
+      } else if (builderConfig.sortBy === 'rank') {
+        rows.sort((a, b) => (parseFloat(b.obtainedMarks) || -1) - (parseFloat(a.obtainedMarks) || -1));
+      } else if (builderConfig.sortBy === 'balance') {
+        rows.sort((a, b) => (parseFloat(b.balanceDue) || 0) - (parseFloat(a.balanceDue) || 0));
+      }
+
+      return rows;
+    };
+
+    const applyBuilderPreset = (presetId) => {
+      saveBuilderState();
+      if (presetId === 'attendance') {
+        builderConfig.sourceType = 'students';
+        builderConfig.customTitle = 'MONTHLY ATTENDANCE REGISTER';
+        const dayCols = Array.from({ length: 12 }, (_, i) => ({
+          id: `col_d${i + 1}`,
+          field: 'CUSTOM',
+          title: `${i + 1}`,
+          width: '32px'
+        }));
+        builderConfig.columns = [
+          { id: 'col_sno', field: 'SNO', title: 'S.No', width: '42px' },
+          { id: 'col_adm', field: 'adm', title: 'Adm No', width: '75px' },
+          { id: 'col_name', field: 'name', title: 'Student Name', width: '170px' },
+          ...dayCols,
+          { id: 'col_tot', field: 'CUSTOM', title: 'Total', width: '55px' }
+        ];
+      } else if (presetId === 'student_register') {
+        builderConfig.sourceType = 'students';
+        builderConfig.customTitle = 'GENERAL STUDENT REGISTER';
+        builderConfig.columns = [
+          { id: 'col_sno', field: 'SNO', title: 'S.No', width: '45px' },
+          { id: 'col_adm', field: 'adm', title: 'Adm No.', width: '80px' },
+          { id: 'col_uid', field: 'uid', title: 'UID', width: '80px' },
+          { id: 'col_name', field: 'name', title: 'Student Name', width: '175px' },
+          { id: 'col_class', field: 'class', title: 'Class', width: '65px' },
+          { id: 'col_father', field: 'father', title: 'Father Name', width: '150px' },
+          { id: 'col_mobile', field: 'mobile', title: 'Mobile', width: '110px' },
+          { id: 'col_dob', field: 'dob', title: 'DOB', width: '95px' }
+        ];
+      } else if (presetId === 'fee_defaulters') {
+        builderConfig.sourceType = 'fees';
+        builderConfig.sortBy = 'balance';
+        builderConfig.customTitle = 'FEE COLLECTION & BALANCE REGISTER';
+        builderConfig.columns = [
+          { id: 'col_sno', field: 'SNO', title: 'S.No', width: '45px' },
+          { id: 'col_adm', field: 'adm', title: 'Adm No.', width: '80px' },
+          { id: 'col_name', field: 'name', title: 'Student Name', width: '175px' },
+          { id: 'col_class', field: 'class', title: 'Class', width: '65px' },
+          { id: 'col_mobile', field: 'mobile', title: 'Mobile', width: '105px' },
+          { id: 'col_net', field: 'netPayable', title: 'Net Fee', width: '85px' },
+          { id: 'col_paid', field: 'paidAmount', title: 'Paid', width: '85px' },
+          { id: 'col_bal', field: 'balanceDue', title: 'Balance Due', width: '95px' },
+          { id: 'col_st', field: 'feeStatus', title: 'Status', width: '85px' }
+        ];
+      } else if (presetId === 'exam_marklist') {
+        builderConfig.sourceType = 'results';
+        builderConfig.sortBy = 'rank';
+        builderConfig.customTitle = 'EXAMINATION MARK LIST & TABULATION';
+        const activeExam = allExams.find((ex) => ex.id === builderConfig.examId) || allExams[0];
+        if (activeExam && builderConfig.examId === 'ALL') builderConfig.examId = activeExam.id;
+        const subCols = Array.isArray(activeExam?.subjects)
+          ? activeExam.subjects.slice(0, 6).map((sub, i) => {
+              const subName = typeof sub === 'string' ? sub : (sub?.name || sub?.title || sub?.subject || `Sub ${i + 1}`);
+              const subKey = typeof sub === 'string' ? sub : (sub?.id || sub?.code || subName);
+              return { id: `col_sub_${i}`, field: `SUB_${subKey}`, title: subName, width: '75px' };
+            })
+          : [];
+        builderConfig.columns = [
+          { id: 'col_sno', field: 'SNO', title: 'S.No', width: '45px' },
+          { id: 'col_adm', field: 'adm', title: 'Adm No.', width: '80px' },
+          { id: 'col_name', field: 'name', title: 'Student Name', width: '170px' },
+          { id: 'col_class', field: 'class', title: 'Class', width: '65px' },
+          ...subCols,
+          { id: 'col_obt', field: 'obtainedMarks', title: 'Total', width: '75px' },
+          { id: 'col_pct', field: 'percentage', title: '%', width: '68px' },
+          { id: 'col_grd', field: 'grade', title: 'Grade', width: '65px' },
+          { id: 'col_rnk', field: 'rank', title: 'Rank', width: '60px' }
+        ];
+      } else if (presetId === 'staff_register') {
+        builderConfig.sourceType = 'staff';
+        builderConfig.customTitle = 'STAFF & MANAGEMENT DIRECTORY REGISTER';
+        builderConfig.columns = [
+          { id: 'col_sno', field: 'SNO', title: 'S.No', width: '45px' },
+          { id: 'col_name', field: 'name', title: 'Full Name', width: '180px' },
+          { id: 'col_cat', field: 'category', title: 'Category', width: '125px' },
+          { id: 'col_role', field: 'role', title: 'Designation', width: '135px' },
+          { id: 'col_mob', field: 'mobile', title: 'Mobile', width: '115px' },
+          { id: 'col_place', field: 'place', title: 'Place / Address', width: '140px' },
+          { id: 'col_sig', field: 'CUSTOM', title: 'Signature', width: '110px' }
+        ];
+      }
+      renderExportTab();
+      setupExcelEngine();
+    };
 
     // Targeted DOM update for columns to preserve user edits
     const populateColumnData = (colIndex) => {
-        const colConfig = builderConfig.columns[colIndex];
-        const fieldId = colConfig.field;
-        
-        document.querySelectorAll('#builder-table tr[data-index]').forEach(tr => {
-            const studentId = tr.dataset.studentId;
-            const rowIndex = parseInt(tr.dataset.index);
-            const cell = tr.querySelector(`.builder-cell[data-col="${colIndex}"]`);
-            if (!cell) return;
-            
-            if (fieldId === 'CUSTOM') {
-                cell.textContent = '';
-            } else if (fieldId === 'SNO') {
-                cell.textContent = studentId ? rowIndex + 1 : '';
-            } else {
-                const student = allStudents.find(s => s.id === studentId);
-                cell.textContent = student ? valueToDisplay(student[fieldId]) : '';
-            }
-        });
+      const colConfig = builderConfig.columns[colIndex];
+      if (!colConfig) return;
+      const fieldId = colConfig.field;
+      const dataset = getBuilderDatasetRows();
+      const rowMap = new Map(dataset.map((item) => [String(item.id), item]));
+
+      document.querySelectorAll('#builder-table tr[data-index]').forEach((tr) => {
+        const recordId = tr.dataset.studentId;
+        const rowIndex = parseInt(tr.dataset.index, 10);
+        const cell = tr.querySelector(`.builder-cell[data-col="${colIndex}"]`);
+        if (!cell) return;
+
+        if (fieldId === 'CUSTOM') {
+          cell.textContent = '';
+        } else if (fieldId === 'SNO') {
+          cell.textContent = recordId ? String(rowIndex + 1) : '';
+        } else {
+          const item = rowMap.get(String(recordId));
+          cell.textContent = item ? valueToDisplay(item[fieldId]) : '';
+        }
+      });
     };
 
     const renderExportTab = () => {
-      const classOptions = [...new Set(allStudents.map(getStudentClass))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-      let studentRows = builderConfig.classId ? allStudents.filter(s => getStudentClass(s) === builderConfig.classId) : [];
-      
-      if (builderConfig.sortBy === 'name') {
-          studentRows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-      } else if (builderConfig.sortBy === 'adm') {
-          studentRows.sort((a, b) => String(a.adm || '').localeCompare(String(b.adm || ''), undefined, { numeric: true }));
+      if (!builderConfig.academicYearId && (officialFilters.academicYearId || activeAcademicYearId)) {
+        builderConfig.academicYearId = officialFilters.academicYearId || activeAcademicYearId;
       }
 
+      const yearStudents = getStudentsForBuilderYear();
+      const classOptions = [...new Set(yearStudents.map(getStudentClass))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      const allStaffRecords = buildUnifiedStaffRecords();
+      const staffCategories = [...new Set(allStaffRecords.map((s) => s.category).filter(Boolean))].sort();
+      const currentFields = getAvailableFieldsForSource(builderConfig.sourceType);
+      const dataRows = getBuilderDatasetRows();
+
       const instName = resolveInstitutionName(institutionConfig);
-      const instSub = institutionConfig.place || institutionConfig.subtitle || 'Institution Portal';
+      const instSub = institutionConfig.place || institutionConfig.subtitle || 'Official Academic & Administrative Register';
       const instReg = institutionConfig.regNo ? `Reg No: ${institutionConfig.regNo}` : '';
-      
-      const colSpanPrint = builderConfig.columns.length; 
-      
+
+      const selectedYearObj = academicYears.find((y) => y.id === builderConfig.academicYearId);
+      const yearLabel = selectedYearObj ? (selectedYearObj.name || selectedYearObj.label || selectedYearObj.id) : '';
+      const autoSubInfo = [];
+      if (yearLabel && builderConfig.sourceType !== 'staff') autoSubInfo.push(`Academic Year: ${yearLabel}`);
+      if (builderConfig.sourceType !== 'staff') {
+        autoSubInfo.push(builderConfig.classId === 'ALL' ? 'All Classes' : (builderConfig.classId ? `Class: ${builderConfig.classId}` : 'Blank Sheet'));
+      } else {
+        autoSubInfo.push(builderConfig.staffCategory === 'ALL' ? 'All Staff & Management Categories' : `Category: ${builderConfig.staffCategory}`);
+      }
+      const subtitleText = builderConfig.customSubtitle || autoSubInfo.join('  •  ');
+
+      const colSpanPrint = builderConfig.columns.length;
+
       const headerHtml = builderConfig.showHeader ? `
         <thead class="${builderConfig.repeatHeader ? 'builder-print-header repeat-header' : 'builder-print-header'}">
-           <tr>
-             <th colspan="${colSpanPrint + 1}" class="print-header-th bg-white border-0 !p-0">
-               <div class="print-header-content">
-                  <h1 class="print-inst-name">${escapeHtml(instName)}</h1>
-                  <h2 class="print-inst-sub">${escapeHtml(instSub)}</h2>
-                  ${instReg ? `<h3 class="print-inst-reg">${escapeHtml(instReg)}</h3>` : ''}
-                  ${builderConfig.customTitle ? `<h4 class="print-custom-title">${escapeHtml(builderConfig.customTitle)}</h4>` : ''}
-               </div>
-             </th>
-           </tr>
+          <tr>
+            <th colspan="${colSpanPrint + 1}" class="print-header-th bg-white border-0 !p-0">
+              <div class="print-header-content">
+                <h1 class="print-inst-name">${escapeHtml(instName)}</h1>
+                <h2 class="print-inst-sub">${escapeHtml(instSub)}</h2>
+                ${instReg ? `<h3 class="print-inst-reg">${escapeHtml(instReg)}</h3>` : ''}
+                ${builderConfig.customTitle ? `<h4 class="print-custom-title">${escapeHtml(builderConfig.customTitle)}</h4>` : ''}
+                ${subtitleText ? `<div class="text-[11px] font-bold text-slate-600 mt-1">${escapeHtml(subtitleText)}</div>` : ''}
+              </div>
+            </th>
+          </tr>
         </thead>
       ` : '';
 
-      const excelColHeaders = builderConfig.columns.map((col, i) => 
-        `<th class="no-print col-header" data-col="${i}" title="Select Column ${String.fromCharCode(65 + i)}">${String.fromCharCode(65 + i)}</th>`
+      const getExcelColumnLabel = (index) => {
+        let label = '';
+        let n = index;
+        while (n >= 0) {
+          label = String.fromCharCode((n % 26) + 65) + label;
+          n = Math.floor(n / 26) - 1;
+        }
+        return label;
+      };
+
+      const excelColHeaders = builderConfig.columns.map((col, i) =>
+        `<th class="no-print col-header" data-col="${i}" title="Select Column ${getExcelColumnLabel(i)}">${getExcelColumnLabel(i)}</th>`
       ).join('');
 
       const colHeadersHtml = builderConfig.columns.map((col, cIndex) => {
@@ -2075,7 +2576,7 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
           <div class="col-resizer" data-col-index="${cIndex}"></div>
           <div class="no-print mb-1 flex items-center justify-between gap-1">
             <select class="grid-select builder-col-select" data-col-index="${cIndex}">
-              ${availableDataFields.map(f => `<option value="${f.id}" ${f.id === col.field ? 'selected' : ''}>${f.label}</option>`).join('')}
+              ${currentFields.map((f) => `<option value="${escapeHtml(f.id)}" ${f.id === col.field ? 'selected' : ''}>${escapeHtml(f.label)}</option>`).join('')}
             </select>
             <button class="text-red-500 hover:bg-red-100 px-1 py-0.5 rounded delete-col-btn opacity-0 group-hover:opacity-100 transition-opacity" data-col-index="${cIndex}" title="Remove Column"><i class="fas fa-times"></i></button>
           </div>
@@ -2086,167 +2587,330 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
         </th>`;
       }).join('');
 
-      const renderTbodyRows = (students, startIndex = 0) => {
-          const rowCount = Math.max(15, students.length); 
-          return Array.from({ length: rowCount }).map((_, rIndex) => {
-            const student = students[rIndex] || null;
-            return `<tr data-student-id="${student ? escapeHtml(student.id) : ''}" data-index="${startIndex + rIndex}">
-              <td class="no-print row-header" data-row="${startIndex + rIndex}">${startIndex + rIndex + 1}</td>
-              ${builderConfig.columns.map((col, cIndex) => {
+      const densityPadding = builderConfig.rowDensity === 'compact' ? '2px 5px' : (builderConfig.rowDensity === 'comfortable' ? '9px 10px' : '5px 8px');
+      const defaultBorderCss = builderConfig.borderMode === 'none' ? '1px solid transparent' : '1px solid #000000';
+
+      const renderTbodyRows = (records, startIndex = 0) => {
+        const rowCount = Math.max(15, records.length);
+        return Array.from({ length: rowCount }).map((_, rIndex) => {
+          const rec = records[rIndex] || null;
+          return `<tr data-student-id="${rec ? escapeHtml(String(rec.id)) : ''}" data-index="${startIndex + rIndex}">
+            <td class="no-print row-header" data-row="${startIndex + rIndex}">${startIndex + rIndex + 1}</td>
+            ${builderConfig.columns.map((col, cIndex) => {
               let cellValue = '';
-              if (col.field === 'SNO') cellValue = student ? startIndex + rIndex + 1 : '';
-              else if (col.field !== 'CUSTOM' && student) cellValue = valueToDisplay(student[col.field]);
-              return `<td class="excel-cell builder-cell" contenteditable="true" data-row="${startIndex + rIndex}" data-col="${cIndex}">${escapeHtml(String(cellValue))}</td>`;
-            }).join('')}</tr>`;
-          }).join('');
+              if (col.field === 'SNO') cellValue = rec ? startIndex + rIndex + 1 : '';
+              else if (col.field !== 'CUSTOM' && rec) cellValue = valueToDisplay(rec[col.field]);
+              const isNumField = ['SNO', 'feeTotal', 'concession', 'netPayable', 'paidAmount', 'balanceDue', 'obtainedMarks', 'maxMarks', 'rank'].includes(col.field) || String(col.field).startsWith('SUB_');
+              const alignStyle = isNumField ? 'text-align: center;' : '';
+              return `<td class="excel-cell builder-cell" contenteditable="true" data-row="${startIndex + rIndex}" data-col="${cIndex}" style="padding: ${densityPadding}; border: ${defaultBorderCss}; ${alignStyle}">${escapeHtml(String(cellValue))}</td>`;
+            }).join('')}
+          </tr>`;
+        }).join('');
       };
 
       let bodyHtml = '';
-      if (!builderConfig.classId || builderConfig.groupBy === 'mixed') {
-          bodyHtml = `<tbody>${renderTbodyRows(studentRows)}</tbody>`;
+      if (builderConfig.sourceType === 'staff' || !builderConfig.classId || builderConfig.groupBy === 'mixed') {
+        bodyHtml = `<tbody>${renderTbodyRows(dataRows)}</tbody>`;
+      } else if (builderConfig.groupBy === 'class_wise' && builderConfig.classId === 'ALL') {
+        let runningIdx = 0;
+        const groupedHtml = classOptions.map((clsName, gIdx) => {
+          const clsList = dataRows.filter((r) => String(r.class || '') === clsName);
+          if (clsList.length === 0) return '';
+          const sectionRows = renderTbodyRows(clsList, runningIdx);
+          runningIdx += Math.max(15, clsList.length);
+          return `<tbody class="${gIdx > 0 ? 'page-break-before' : ''}">
+            <tr>
+              <td class="no-print row-header">-</td>
+              <td colspan="${builderConfig.columns.length}" class="bg-slate-100 text-left text-xs py-1.5 px-3 text-slate-800 font-extrabold border border-slate-400">CLASS: ${escapeHtml(clsName)} (${clsList.length} Students)</td>
+            </tr>
+            ${sectionRows}
+          </tbody>`;
+        }).join('');
+        bodyHtml = groupedHtml || `<tbody>${renderTbodyRows(dataRows)}</tbody>`;
       } else {
-          const boys = studentRows.filter(s => normalizeText(s.gender) === 'male');
-          const girls = studentRows.filter(s => normalizeText(s.gender) === 'female');
-          
-          if (builderConfig.groupBy === 'grouped') {
-              bodyHtml = `<tbody>${renderTbodyRows([...boys, ...girls])}</tbody>`;
-          } else if (builderConfig.groupBy === 'separate') {
-              bodyHtml = `<tbody>${renderTbodyRows(boys)}</tbody>
-                          <tbody class="page-break-before">
-                            <tr>
-                                <td class="no-print row-header">-</td>
-                                <td colspan="${builderConfig.columns.length}" class="no-print bg-slate-100 text-center text-xs py-2 text-slate-500 font-bold border-dashed border-y border-slate-300">--- PAGE BREAK (Girls List) ---</td>
-                            </tr>
-                            ${renderTbodyRows(girls, boys.length)}
-                          </tbody>`;
-          }
+        const boys = dataRows.filter((s) => normalizeText(s.gender) === 'male');
+        const girls = dataRows.filter((s) => normalizeText(s.gender) === 'female');
+
+        if (builderConfig.groupBy === 'grouped') {
+          bodyHtml = `<tbody>${renderTbodyRows([...boys, ...girls])}</tbody>`;
+        } else if (builderConfig.groupBy === 'separate') {
+          bodyHtml = `<tbody>${renderTbodyRows(boys)}</tbody>
+            <tbody class="page-break-before">
+              <tr>
+                <td class="no-print row-header">-</td>
+                <td colspan="${builderConfig.columns.length}" class="no-print bg-slate-100 text-center text-xs py-2 text-slate-500 font-bold border-dashed border-y border-slate-300">--- PAGE BREAK (Girls List) ---</td>
+              </tr>
+              ${renderTbodyRows(girls, Math.max(15, boys.length))}
+            </tbody>`;
+        } else {
+          bodyHtml = `<tbody>${renderTbodyRows(dataRows)}</tbody>`;
+        }
       }
+
+      const signatureFooterHtml = builderConfig.showSignatures ? `
+        <div class="mt-10 pt-8 px-6 pb-4 grid grid-cols-3 gap-8 text-center text-xs font-bold text-slate-800">
+          <div class="border-t border-slate-800 pt-2">${escapeHtml(builderConfig.sigLeft || 'Class Teacher')}</div>
+          <div class="border-t border-slate-800 pt-2">${escapeHtml(builderConfig.sigCenter || 'Checked By')}</div>
+          <div class="border-t border-slate-800 pt-2">${escapeHtml(builderConfig.sigRight || 'Principal / Head')}</div>
+        </div>
+      ` : '';
 
       const ribbonHome = `
         <div id="ribbon-home" class="ribbon-panel ${builderConfig.activeTab === 'home' ? 'active' : ''}">
-           <div class="ribbon-group">
-               <div class="ribbon-row h-full">
-                   <button id="fmt-undo" class="excel-btn-ribbon" title="Undo"><i class="fas fa-undo"></i><span>Undo</span></button>
-                   <button id="fmt-redo" class="excel-btn-ribbon" title="Redo"><i class="fas fa-redo"></i><span>Redo</span></button>
-               </div>
-               <span class="ribbon-label">History</span>
-           </div>
-           
-           <div class="ribbon-group">
-               <div class="ribbon-row mb-1">
-                   <select class="excel-input-ribbon w-28"><option>Calibri</option><option>Inter</option></select>
-                   <div class="flex border border-gray-400 rounded overflow-hidden h-[24px]">
-                       <button id="fmt-size-minus" class="px-2 bg-white hover:bg-slate-100 border-r border-gray-400 text-[#323130]"><i class="fas fa-minus text-[10px]"></i></button>
-                       <input type="number" id="fmt-size-input" class="w-10 text-center outline-none font-bold text-xs text-[#323130]" value="13" />
-                       <button id="fmt-size-plus" class="px-2 bg-white hover:bg-slate-100 border-l border-gray-400 text-[#323130]"><i class="fas fa-plus text-[10px]"></i></button>
-                   </div>
-               </div>
-               <div class="ribbon-row">
-                   <button id="fmt-bold" class="excel-btn-small font-serif font-bold text-[14px]">B</button>
-                   <button id="fmt-italic" class="excel-btn-small font-serif italic text-[14px]">I</button>
-                   <div class="w-px h-4 bg-slate-300 mx-2"></div>
-                   <div class="relative flex items-center justify-center excel-btn-small cursor-pointer mr-1" title="Fill Color">
-                       <i class="fas fa-fill-drip text-xs"></i>
-                       <div class="absolute bottom-0.5 left-1 right-1 h-[3px] bg-white border border-gray-300 pointer-events-none indicator-bg"></div>
-                       <input type="color" id="fmt-bg" class="opacity-0 absolute inset-0 cursor-pointer" value="#ffffff">
-                   </div>
-                   <div class="relative flex items-center justify-center excel-btn-small cursor-pointer" title="Text Color">
-                       <i class="fas fa-font text-xs"></i>
-                       <div class="absolute bottom-0.5 left-1 right-1 h-[3px] bg-slate-900 pointer-events-none indicator-color"></div>
-                       <input type="color" id="fmt-color" class="opacity-0 absolute inset-0 cursor-pointer" value="#0f172a">
-                   </div>
-               </div>
-               <span class="ribbon-label">Font</span>
-           </div>
-           
-           <div class="ribbon-group">
-               <div class="ribbon-row h-full">
-                   <button id="btn-add-col" class="excel-btn-ribbon text-emerald-700" title="Insert Column"><i class="fas fa-columns"></i><span>Add Col</span></button>
-                   <button id="btn-add-row" class="excel-btn-ribbon text-emerald-700" title="Insert Row"><i class="fas fa-table-rows"></i><span>Add Row</span></button>
-               </div>
-               <span class="ribbon-label">Cells</span>
-           </div>
+          <div class="ribbon-group">
+            <div class="ribbon-row h-full">
+              <button id="fmt-undo" class="excel-btn-ribbon" title="Undo"><i class="fas fa-undo"></i><span>Undo</span></button>
+              <button id="fmt-redo" class="excel-btn-ribbon" title="Redo"><i class="fas fa-redo"></i><span>Redo</span></button>
+            </div>
+            <span class="ribbon-label">History</span>
+          </div>
+
+          <div class="ribbon-group">
+            <div class="ribbon-row mb-1 gap-1">
+              <select id="fmt-font-family" class="excel-input-ribbon w-28">
+                <option value="'Plus Jakarta Sans', sans-serif">Jakarta Sans</option>
+                <option value="Calibri, sans-serif">Calibri</option>
+                <option value="Arial, sans-serif">Arial</option>
+                <option value="'Times New Roman', serif">Times New Roman</option>
+              </select>
+              <div class="flex border border-gray-400 rounded overflow-hidden h-[24px]">
+                <button id="fmt-size-minus" class="px-2 bg-white hover:bg-slate-100 border-r border-gray-400 text-[#323130]" title="Decrease Font Size"><i class="fas fa-minus text-[10px]"></i></button>
+                <input type="number" id="fmt-size-input" class="w-10 text-center outline-none font-bold text-xs text-[#323130]" value="13" />
+                <button id="fmt-size-plus" class="px-2 bg-white hover:bg-slate-100 border-l border-gray-400 text-[#323130]" title="Increase Font Size"><i class="fas fa-plus text-[10px]"></i></button>
+              </div>
+            </div>
+            <div class="ribbon-row gap-0.5">
+              <button id="fmt-bold" class="excel-btn-small font-serif font-bold text-[14px]" title="Bold">B</button>
+              <button id="fmt-italic" class="excel-btn-small font-serif italic text-[14px]" title="Italic">I</button>
+              <button id="fmt-underline" class="excel-btn-small font-serif underline text-[14px]" title="Underline">U</button>
+              <div class="w-px h-4 bg-slate-300 mx-1"></div>
+              <div class="relative flex items-center justify-center excel-btn-small cursor-pointer" title="Cell Fill Color">
+                <i class="fas fa-fill-drip text-xs"></i>
+                <div class="absolute bottom-0.5 left-1 right-1 h-[3px] bg-yellow-200 border border-gray-300 pointer-events-none indicator-bg"></div>
+                <input type="color" id="fmt-bg" class="opacity-0 absolute inset-0 cursor-pointer" value="#fef08a">
+              </div>
+              <div class="relative flex items-center justify-center excel-btn-small cursor-pointer" title="Font Color">
+                <i class="fas fa-font text-xs"></i>
+                <div class="absolute bottom-0.5 left-1 right-1 h-[3px] bg-slate-900 pointer-events-none indicator-color"></div>
+                <input type="color" id="fmt-color" class="opacity-0 absolute inset-0 cursor-pointer" value="#0f172a">
+              </div>
+              <button id="fmt-clear" class="excel-btn-small text-rose-600 ml-1" title="Clear Cell Formatting"><i class="fas fa-eraser text-xs"></i></button>
+            </div>
+            <span class="ribbon-label">Font</span>
+          </div>
+
+          <div class="ribbon-group">
+            <div class="ribbon-row mb-1 gap-0.5">
+              <button id="fmt-align-left" class="excel-btn-small" title="Align Left"><i class="fas fa-align-left text-xs"></i></button>
+              <button id="fmt-align-center" class="excel-btn-small" title="Align Center"><i class="fas fa-align-center text-xs"></i></button>
+              <button id="fmt-align-right" class="excel-btn-small" title="Align Right"><i class="fas fa-align-right text-xs"></i></button>
+              <button id="fmt-wrap" class="excel-btn-small px-1.5 w-auto text-[11px] font-bold" title="Toggle Wrap Text"><i class="fas fa-level-down-alt rotate-90 mr-1"></i>Wrap</button>
+            </div>
+            <div class="ribbon-row gap-1">
+              <button id="fmt-merge" class="excel-btn-small px-2 w-auto text-[11px] font-bold text-indigo-700" title="Merge Selected Cells"><i class="fas fa-object-group mr-1"></i>Merge</button>
+              <button id="fmt-unmerge" class="excel-btn-small px-2 w-auto text-[11px] font-bold text-slate-700" title="Unmerge Cells"><i class="fas fa-object-ungroup mr-1"></i>Split</button>
+            </div>
+            <span class="ribbon-label">Alignment & Merge</span>
+          </div>
+
+          <div class="ribbon-group">
+            <div class="ribbon-row mb-1 gap-1">
+              <button id="fmt-border-all" class="excel-btn-small px-1.5 w-auto text-[11px] font-semibold" title="All Borders on Selected Cells"><i class="fas fa-border-all mr-1"></i>All</button>
+              <button id="fmt-border-thick" class="excel-btn-small px-1.5 w-auto text-[11px] font-bold" title="Thick Box Border"><i class="fas fa-vector-square mr-1"></i>Thick</button>
+              <button id="fmt-border-none" class="excel-btn-small px-1.5 w-auto text-[11px] text-slate-600" title="No Border on Selected Cells"><i class="fas fa-border-none mr-1"></i>None</button>
+            </div>
+            <div class="ribbon-row gap-1 items-center">
+              <span class="text-[10px] font-bold text-slate-600">Table Grid:</span>
+              <select id="builder-border-mode" class="excel-input-ribbon w-24">
+                <option value="grid" ${builderConfig.borderMode === 'grid' ? 'selected' : ''}>Full Grid</option>
+                <option value="none" ${builderConfig.borderMode === 'none' ? 'selected' : ''}>Borderless</option>
+              </select>
+            </div>
+            <span class="ribbon-label">Borders & Lines</span>
+          </div>
+
+          <div class="ribbon-group">
+            <div class="ribbon-row h-full gap-1">
+              <button id="btn-add-col" class="excel-btn-ribbon text-emerald-700" title="Insert Blank Column"><i class="fas fa-columns"></i><span>+ Col</span></button>
+              <button id="btn-add-row" class="excel-btn-ribbon text-emerald-700" title="Insert Blank Row"><i class="fas fa-plus-square"></i><span>+ Row</span></button>
+              <button id="btn-del-row" class="excel-btn-ribbon text-rose-700" title="Delete Selected Row(s)"><i class="fas fa-trash-alt"></i><span>Del Row</span></button>
+              <button id="btn-sum-row" class="excel-btn-ribbon text-indigo-700" title="Append Auto Total / Summary Row"><i class="fas fa-calculator"></i><span>Auto Total</span></button>
+            </div>
+            <span class="ribbon-label">Cells & Totals</span>
+          </div>
         </div>
       `;
 
       const ribbonData = `
         <div id="ribbon-data" class="ribbon-panel ${builderConfig.activeTab === 'data' ? 'active' : ''}">
-            <div class="ribbon-group">
-               <div class="ribbon-row h-full items-center gap-2">
-                   <div class="flex flex-col">
-                       <label class="text-[10px] font-semibold text-slate-600 mb-0.5">Source Class</label>
-                       <select id="builder-class" class="excel-input-ribbon w-32">
-                         <option value="">-- Blank Table --</option>
-                         ${classOptions.map((className) => `<option value="${escapeHtml(className)}" ${builderConfig.classId === className ? 'selected' : ''}>Class ${escapeHtml(className)}</option>`).join('')}
-                       </select>
-                   </div>
-               </div>
-               <span class="ribbon-label">Data Source</span>
+          <div class="ribbon-group">
+            <div class="ribbon-row h-full items-center gap-2">
+              <div class="flex flex-col">
+                <label class="text-[10px] font-bold text-slate-700 mb-0.5">1. Data Module</label>
+                <select id="builder-source-type" class="excel-input-ribbon w-40 font-bold text-indigo-900">
+                  <option value="students" ${builderConfig.sourceType === 'students' ? 'selected' : ''}>Students Register</option>
+                  <option value="staff" ${builderConfig.sourceType === 'staff' ? 'selected' : ''}>Staff & Management</option>
+                  <option value="fees" ${builderConfig.sourceType === 'fees' ? 'selected' : ''}>Fee Collection Status</option>
+                  <option value="results" ${builderConfig.sourceType === 'results' ? 'selected' : ''}>Exam Results & Marks</option>
+                </select>
+              </div>
+              ${builderConfig.sourceType !== 'staff' ? `
+              <div class="flex flex-col">
+                <label class="text-[10px] font-bold text-slate-700 mb-0.5">2. Academic Year</label>
+                <select id="builder-academic-year" class="excel-input-ribbon w-32">
+                  ${academicYears.length > 0
+                    ? academicYears.map((y) => `<option value="${escapeHtml(y.id)}" ${builderConfig.academicYearId === y.id ? 'selected' : ''}>${escapeHtml(y.name || y.label || y.id)}${y.isActive ? ' (Active)' : ''}</option>`).join('')
+                    : '<option value="">Active Year</option>'}
+                </select>
+              </div>
+              <div class="flex flex-col">
+                <label class="text-[10px] font-bold text-slate-700 mb-0.5">3. Select Class</label>
+                <select id="builder-class" class="excel-input-ribbon w-36 font-bold">
+                  <option value="ALL" ${builderConfig.classId === 'ALL' ? 'selected' : ''}>All Classes (${yearStudents.length})</option>
+                  <option value="" ${builderConfig.classId === '' ? 'selected' : ''}>-- Blank Sheet --</option>
+                  ${classOptions.map((className) => `<option value="${escapeHtml(className)}" ${builderConfig.classId === className ? 'selected' : ''}>Class ${escapeHtml(className)}</option>`).join('')}
+                </select>
+              </div>
+              ` : `
+              <div class="flex flex-col">
+                <label class="text-[10px] font-bold text-slate-700 mb-0.5">2. Staff / Directory Category</label>
+                <select id="builder-staff-category" class="excel-input-ribbon w-44 font-bold">
+                  <option value="ALL" ${builderConfig.staffCategory === 'ALL' ? 'selected' : ''}>All Categories (${allStaffRecords.length})</option>
+                  ${staffCategories.map((cat) => `<option value="${escapeHtml(cat)}" ${builderConfig.staffCategory === cat ? 'selected' : ''}>${escapeHtml(cat)}</option>`).join('')}
+                </select>
+              </div>
+              `}
+              ${builderConfig.sourceType === 'fees' ? `
+              <div class="flex flex-col">
+                <label class="text-[10px] font-bold text-slate-700 mb-0.5">4. Fee Item</label>
+                <select id="builder-fee-item" class="excel-input-ribbon w-36">
+                  <option value="ALL" ${builderConfig.feeItemId === 'ALL' ? 'selected' : ''}>All Fee Items</option>
+                  ${allFeeItems.map((fi) => `<option value="${escapeHtml(fi.id)}" ${builderConfig.feeItemId === fi.id ? 'selected' : ''}>${escapeHtml(fi.name || fi.title || fi.id)}</option>`).join('')}
+                </select>
+              </div>
+              ` : ''}
+              ${builderConfig.sourceType === 'results' ? `
+              <div class="flex flex-col">
+                <label class="text-[10px] font-bold text-slate-700 mb-0.5">4. Select Exam</label>
+                <select id="builder-exam-id" class="excel-input-ribbon w-40">
+                  <option value="ALL" ${builderConfig.examId === 'ALL' ? 'selected' : ''}>Latest / All Exams</option>
+                  ${allExams.map((ex) => `<option value="${escapeHtml(ex.id)}" ${builderConfig.examId === ex.id ? 'selected' : ''}>${escapeHtml(ex.name || ex.title || ex.id)}</option>`).join('')}
+                </select>
+              </div>
+              ` : ''}
             </div>
-            <div class="ribbon-group">
-               <div class="ribbon-row h-full items-center gap-2">
-                   <div class="flex flex-col">
-                       <label class="text-[10px] font-semibold text-slate-600 mb-0.5">Sort By</label>
-                       <select id="builder-sort" class="excel-input-ribbon w-24">
-                          <option value="name" ${builderConfig.sortBy === 'name' ? 'selected' : ''}>Name A-Z</option>
-                          <option value="adm" ${builderConfig.sortBy === 'adm' ? 'selected' : ''}>Adm No</option>
-                       </select>
-                   </div>
-                   <div class="flex flex-col">
-                       <label class="text-[10px] font-semibold text-slate-600 mb-0.5">Group By</label>
-                       <select id="builder-group" class="excel-input-ribbon w-28">
-                          <option value="mixed" ${builderConfig.groupBy === 'mixed' ? 'selected' : ''}>Mixed</option>
-                          <option value="grouped" ${builderConfig.groupBy === 'grouped' ? 'selected' : ''}>Boys First</option>
-                          <option value="separate" ${builderConfig.groupBy === 'separate' ? 'selected' : ''}>Page Break</option>
-                       </select>
-                   </div>
-               </div>
-               <span class="ribbon-label">Sort & Filter</span>
+            <span class="ribbon-label">Data Source & Filters (${dataRows.length} Records)</span>
+          </div>
+
+          <div class="ribbon-group">
+            <div class="ribbon-row h-full items-center gap-2">
+              <div class="flex flex-col">
+                <label class="text-[10px] font-semibold text-slate-600 mb-0.5">Sort Order</label>
+                <select id="builder-sort" class="excel-input-ribbon w-28">
+                  <option value="name" ${builderConfig.sortBy === 'name' ? 'selected' : ''}>Name (A-Z)</option>
+                  <option value="adm" ${builderConfig.sortBy === 'adm' ? 'selected' : ''}>Adm No.</option>
+                  <option value="class" ${builderConfig.sortBy === 'class' ? 'selected' : ''}>Class Wise</option>
+                  ${builderConfig.sourceType === 'results' ? `<option value="rank" ${builderConfig.sortBy === 'rank' ? 'selected' : ''}>Top Marks / Rank</option>` : ''}
+                  ${builderConfig.sourceType === 'fees' ? `<option value="balance" ${builderConfig.sortBy === 'balance' ? 'selected' : ''}>Highest Balance</option>` : ''}
+                  ${builderConfig.sourceType === 'staff' ? `<option value="category" ${builderConfig.sortBy === 'category' ? 'selected' : ''}>Category Wise</option>` : ''}
+                </select>
+              </div>
+              ${builderConfig.sourceType !== 'staff' ? `
+              <div class="flex flex-col">
+                <label class="text-[10px] font-semibold text-slate-600 mb-0.5">Grouping</label>
+                <select id="builder-group" class="excel-input-ribbon w-32">
+                  <option value="mixed" ${builderConfig.groupBy === 'mixed' ? 'selected' : ''}>Combined List</option>
+                  <option value="grouped" ${builderConfig.groupBy === 'grouped' ? 'selected' : ''}>Boys First</option>
+                  <option value="separate" ${builderConfig.groupBy === 'separate' ? 'selected' : ''}>Boys/Girls Page Break</option>
+                  <option value="class_wise" ${builderConfig.groupBy === 'class_wise' ? 'selected' : ''}>Class-wise Page Break</option>
+                </select>
+              </div>
+              ` : ''}
             </div>
+            <span class="ribbon-label">Sort & Grouping</span>
+          </div>
+
+          <div class="ribbon-group">
+            <div class="ribbon-row h-full items-center gap-1">
+              <button class="excel-btn-ribbon text-indigo-700 preset-template-btn" data-preset="attendance" title="Load Monthly Attendance Grid"><i class="fas fa-calendar-check"></i><span>Attendance</span></button>
+              <button class="excel-btn-ribbon text-sky-700 preset-template-btn" data-preset="student_register" title="Load Full Student Register"><i class="fas fa-user-graduate"></i><span>Student Reg</span></button>
+              <button class="excel-btn-ribbon text-amber-700 preset-template-btn" data-preset="fee_defaulters" title="Load Fee Collection & Due Sheet"><i class="fas fa-rupee-sign"></i><span>Fee Sheet</span></button>
+              <button class="excel-btn-ribbon text-purple-700 preset-template-btn" data-preset="exam_marklist" title="Load Exam Mark List"><i class="fas fa-award"></i><span>Mark List</span></button>
+              <button class="excel-btn-ribbon text-teal-700 preset-template-btn" data-preset="staff_register" title="Load Staff & Management Register"><i class="fas fa-chalkboard-teacher"></i><span>Staff Reg</span></button>
+            </div>
+            <span class="ribbon-label">1-Click Smart Templates</span>
+          </div>
         </div>
       `;
 
       const ribbonLayout = `
         <div id="ribbon-layout" class="ribbon-panel ${builderConfig.activeTab === 'layout' ? 'active' : ''}">
-            <div class="ribbon-group">
-                <div class="ribbon-row h-full gap-2 items-center">
-                   <div class="flex flex-col">
-                       <label class="text-[10px] font-semibold text-slate-600 mb-0.5">Size</label>
-                       <select id="builder-paper" class="excel-input-ribbon w-20">
-                          <option value="A4" ${builderConfig.paper === 'A4' ? 'selected' : ''}>A4</option>
-                          <option value="Legal" ${builderConfig.paper === 'Legal' ? 'selected' : ''}>Legal</option>
-                       </select>
-                   </div>
-                   <div class="flex flex-col">
-                       <label class="text-[10px] font-semibold text-slate-600 mb-0.5">Orientation</label>
-                       <select id="builder-orient" class="excel-input-ribbon w-24">
-                          <option value="portrait" ${builderConfig.orientation === 'portrait' ? 'selected' : ''}>Portrait</option>
-                          <option value="landscape" ${builderConfig.orientation === 'landscape' ? 'selected' : ''}>Landscape</option>
-                       </select>
-                   </div>
-                </div>
-                <span class="ribbon-label">Page Setup</span>
+          <div class="ribbon-group">
+            <div class="ribbon-row h-full gap-2 items-center">
+              <div class="flex flex-col">
+                <label class="text-[10px] font-semibold text-slate-600 mb-0.5">Paper Size</label>
+                <select id="builder-paper" class="excel-input-ribbon w-20 font-bold">
+                  <option value="A4" ${builderConfig.paper === 'A4' ? 'selected' : ''}>A4</option>
+                  <option value="Legal" ${builderConfig.paper === 'Legal' ? 'selected' : ''}>Legal</option>
+                  <option value="A3" ${builderConfig.paper === 'A3' ? 'selected' : ''}>A3</option>
+                </select>
+              </div>
+              <div class="flex flex-col">
+                <label class="text-[10px] font-semibold text-slate-600 mb-0.5">Orientation</label>
+                <select id="builder-orient" class="excel-input-ribbon w-28 font-bold">
+                  <option value="portrait" ${builderConfig.orientation === 'portrait' ? 'selected' : ''}>Portrait (Tall)</option>
+                  <option value="landscape" ${builderConfig.orientation === 'landscape' ? 'selected' : ''}>Landscape (Wide)</option>
+                </select>
+              </div>
+              <div class="flex flex-col">
+                <label class="text-[10px] font-semibold text-slate-600 mb-0.5">Row Spacing</label>
+                <select id="builder-density" class="excel-input-ribbon w-24">
+                  <option value="compact" ${builderConfig.rowDensity === 'compact' ? 'selected' : ''}>Compact</option>
+                  <option value="normal" ${builderConfig.rowDensity === 'normal' ? 'selected' : ''}>Normal</option>
+                  <option value="comfortable" ${builderConfig.rowDensity === 'comfortable' ? 'selected' : ''}>Spacious</option>
+                </select>
+              </div>
+              <div class="flex flex-col">
+                <label class="text-[10px] font-semibold text-slate-600 mb-0.5">Canvas Zoom</label>
+                <select id="builder-zoom" class="excel-input-ribbon w-20">
+                  <option value="75" ${builderConfig.zoom === 75 ? 'selected' : ''}>75%</option>
+                  <option value="90" ${builderConfig.zoom === 90 ? 'selected' : ''}>90%</option>
+                  <option value="100" ${builderConfig.zoom === 100 ? 'selected' : ''}>100%</option>
+                  <option value="115" ${builderConfig.zoom === 115 ? 'selected' : ''}>115%</option>
+                </select>
+              </div>
             </div>
-            <div class="ribbon-group">
-                <div class="ribbon-row h-full gap-2 items-center">
-                   <div class="flex flex-col">
-                       <label class="text-[10px] font-semibold text-slate-600 mb-0.5">Report Title</label>
-                       <input type="text" id="builder-custom-title" value="${escapeHtml(builderConfig.customTitle)}" class="excel-input-ribbon w-48" placeholder="e.g. Term 1 Attendance">
-                   </div>
-                </div>
-                <span class="ribbon-label">Titles</span>
+            <span class="ribbon-label">Page Setup & Orientation</span>
+          </div>
+
+          <div class="ribbon-group">
+            <div class="ribbon-row h-full gap-2 items-center">
+              <div class="flex flex-col">
+                <label class="text-[10px] font-semibold text-slate-600 mb-0.5">Report Main Heading</label>
+                <input type="text" id="builder-custom-title" value="${escapeHtml(builderConfig.customTitle)}" class="excel-input-ribbon w-44" placeholder="e.g. Term 1 Register">
+              </div>
+              <div class="flex flex-col">
+                <label class="text-[10px] font-semibold text-slate-600 mb-0.5">Sub-Heading (Optional)</label>
+                <input type="text" id="builder-custom-subtitle" value="${escapeHtml(builderConfig.customSubtitle)}" class="excel-input-ribbon w-40" placeholder="Auto class/year info">
+              </div>
             </div>
-            <div class="ribbon-group">
-                <div class="flex flex-col gap-1 mt-1 justify-center h-full">
-                     <label class="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-                        <input type="checkbox" id="builder-show-header" ${builderConfig.showHeader ? 'checked' : ''} class="w-3.5 h-3.5 text-emerald-600 rounded"> Show Header
-                     </label>
-                     <label class="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer ${!builderConfig.showHeader ? 'opacity-50 pointer-events-none' : ''}">
-                        <input type="checkbox" id="builder-repeat-header" ${builderConfig.repeatHeader ? 'checked' : ''} class="w-3.5 h-3.5 text-emerald-600 rounded"> Repeat all pages
-                     </label>
-                </div>
-                <span class="ribbon-label">Print Options</span>
+            <span class="ribbon-label">Header Titles</span>
+          </div>
+
+          <div class="ribbon-group">
+            <div class="flex flex-col gap-1 mt-0.5 justify-center h-full">
+              <label class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 cursor-pointer">
+                <input type="checkbox" id="builder-show-header" ${builderConfig.showHeader ? 'checked' : ''} class="w-3.5 h-3.5 text-emerald-600 rounded"> Show Institution Header
+              </label>
+              <label class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 cursor-pointer ${!builderConfig.showHeader ? 'opacity-50 pointer-events-none' : ''}">
+                <input type="checkbox" id="builder-repeat-header" ${builderConfig.repeatHeader ? 'checked' : ''} class="w-3.5 h-3.5 text-emerald-600 rounded"> Repeat Header on Pages
+              </label>
+              <label class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 cursor-pointer">
+                <input type="checkbox" id="builder-show-signatures" ${builderConfig.showSignatures ? 'checked' : ''} class="w-3.5 h-3.5 text-emerald-600 rounded"> Show Signature Footer
+              </label>
             </div>
+            <span class="ribbon-label">Print Options</span>
+          </div>
         </div>
       `;
 
@@ -2255,268 +2919,475 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
 
       exportTarget.innerHTML = `
         <div class="excel-ui-header no-print">
-            <div class="excel-tabs">
-                <button class="excel-tab ${builderConfig.activeTab === 'home' ? 'active' : ''}" data-ribbon="home">Home</button>
-                <button class="excel-tab ${builderConfig.activeTab === 'data' ? 'active' : ''}" data-ribbon="data">Data</button>
-                <button class="excel-tab ${builderConfig.activeTab === 'layout' ? 'active' : ''}" data-ribbon="layout">Page Layout</button>
-                <div class="flex-grow"></div>
-                <div class="flex gap-2 items-center pr-4 mb-1">
-                    <button id="btn-export-print" class="premium-export-btn btn-pdf-red"><i class="fas fa-file-pdf"></i> Print / PDF</button>
-                    <button id="btn-export-excel" class="premium-export-btn btn-excel-green"><i class="fas fa-file-excel"></i> Export</button>
-                </div>
+          <div class="excel-tabs">
+            <button class="excel-tab ${builderConfig.activeTab === 'data' ? 'active' : ''}" data-ribbon="data"><i class="fas fa-database mr-1"></i>Data & Templates</button>
+            <button class="excel-tab ${builderConfig.activeTab === 'home' ? 'active' : ''}" data-ribbon="home"><i class="fas fa-pen-nib mr-1"></i>Home & Formatting</button>
+            <button class="excel-tab ${builderConfig.activeTab === 'layout' ? 'active' : ''}" data-ribbon="layout"><i class="fas fa-file-invoice mr-1"></i>Page Layout & Print</button>
+            <div class="flex-grow"></div>
+            <div class="flex gap-2 items-center pr-3 mb-1">
+              <span class="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold">
+                <i class="fas fa-table"></i> ${dataRows.length} Rows • ${builderConfig.paper} ${builderConfig.orientation === 'landscape' ? 'Landscape' : 'Portrait'}
+              </span>
+              <button id="btn-export-print" class="premium-export-btn btn-pdf-red"><i class="fas fa-print"></i> Print / Save PDF</button>
+              <button id="btn-export-excel" class="premium-export-btn btn-excel-green"><i class="fas fa-file-excel"></i> Export Excel</button>
             </div>
-            
-            <div class="excel-ribbon-container">
-                ${ribbonHome}
-                ${ribbonData}
-                ${ribbonLayout}
-            </div>
-            
-            <div class="formula-bar">
-                <div id="active-cell-id" class="formula-name-box">A1</div>
-                <div class="formula-divider"></div>
-                <div class="formula-icon">fx</div>
-                <input type="text" id="formula-input" class="formula-input" placeholder="Select a cell to edit..." />
-            </div>
+          </div>
+
+          <div class="excel-ribbon-container">
+            ${ribbonData}
+            ${ribbonHome}
+            ${ribbonLayout}
+          </div>
+
+          <div class="formula-bar">
+            <div id="active-cell-id" class="formula-name-box">A1</div>
+            <div class="formula-divider"></div>
+            <div class="formula-icon">fx</div>
+            <input type="text" id="formula-input" class="formula-input" placeholder="Click any cell to edit text, or drag across cells to format / merge / copy..." />
+          </div>
         </div>
 
         <div class="excel-workspace spreadsheet-container">
-          <div id="print-canvas" class="print-canvas" data-paper="${builderConfig.paper}" data-orient="${builderConfig.orientation}">
+          <div id="print-canvas" class="print-canvas" data-paper="${builderConfig.paper}" data-orient="${builderConfig.orientation}" style="zoom: ${(builderConfig.zoom || 100) / 100};">
             <table id="builder-table" class="excel-table">
               ${headerHtml}
               <thead>
                 <tr class="no-print">
-                   <th class="select-all-corner w-10 border-slate-300" title="Select All"></th>
-                   ${excelColHeaders}
+                  <th class="select-all-corner w-10 border-slate-300" title="Select All Cells"></th>
+                  ${excelColHeaders}
                 </tr>
                 <tr class="config-row">
-                   <th class="no-print row-header bg-slate-200 border-slate-300"></th>
-                   ${colHeadersHtml}
+                  <th class="no-print row-header bg-slate-200 border-slate-300">#</th>
+                  ${colHeadersHtml}
                 </tr>
               </thead>
               ${bodyHtml}
             </table>
+            ${signatureFooterHtml}
           </div>
         </div>
       `;
 
+      updateCanvasStyle();
       attachBuilderListeners();
     };
 
     const bindColumnListeners = (thElement) => {
-        const sel = thElement.querySelector('.builder-col-select');
-        sel?.addEventListener('change', (e) => {
-            saveBuilderState();
-            const idx = parseInt(e.target.dataset.colIndex);
-            const fieldId = e.target.value;
-            builderConfig.columns[idx].field = fieldId;
-            const fieldLabel = availableDataFields.find(f => f.id === fieldId)?.label || 'Column';
-            
-            const th = e.target.closest('th');
-            if(fieldId !== 'CUSTOM') {
-                builderConfig.columns[idx].title = fieldLabel;
-                builderConfig.columns[idx].width = 'auto';
-                th.style.width = 'auto';
-                const input = th.querySelector('.builder-col-title-input');
-                if(input) input.value = fieldLabel;
-                const printHeading = th.querySelector('.print-only-heading');
-                if(printHeading) printHeading.textContent = fieldLabel;
-            } else {
-                builderConfig.columns[idx].width = '150px';
-                th.style.width = '150px';
-            }
-            populateColumnData(idx);
-        });
+      const sel = thElement.querySelector('.builder-col-select');
+      sel?.addEventListener('change', (e) => {
+        saveBuilderState();
+        const idx = parseInt(e.target.dataset.colIndex, 10);
+        const fieldId = e.target.value;
+        builderConfig.columns[idx].field = fieldId;
+        const currentFields = getAvailableFieldsForSource(builderConfig.sourceType);
+        const fieldLabel = currentFields.find((f) => f.id === fieldId)?.label || 'Column';
 
-        const titleInput = thElement.querySelector('.builder-col-title-input');
-        titleInput?.addEventListener('input', (e) => {
-            const idx = parseInt(e.target.dataset.colIndex);
-            builderConfig.columns[idx].title = e.target.value;
-            const heading = e.target.closest('th').querySelector('.print-only-heading');
-            if(heading) heading.textContent = e.target.value;
-        });
+        const th = e.target.closest('th');
+        if (fieldId !== 'CUSTOM') {
+          const cleanLabel = fieldLabel.replace(/^Sub:\s*/i, '').replace(/\s*\(Auto\)$/i, '');
+          builderConfig.columns[idx].title = cleanLabel;
+          builderConfig.columns[idx].width = 'auto';
+          th.style.width = 'auto';
+          const input = th.querySelector('.builder-col-title-input');
+          if (input) input.value = cleanLabel;
+          const printHeading = th.querySelector('.print-only-heading');
+          if (printHeading) printHeading.textContent = cleanLabel;
+        } else {
+          builderConfig.columns[idx].width = '130px';
+          th.style.width = '130px';
+        }
+        populateColumnData(idx);
+      });
 
-        const delBtn = thElement.querySelector('.delete-col-btn');
-        delBtn?.addEventListener('click', (e) => {
-            const idx = parseInt(e.currentTarget.dataset.colIndex);
-            if(builderConfig.columns.length > 1) {
-                saveBuilderState();
-                builderConfig.columns.splice(idx, 1);
-                renderExportTab();
-                setupExcelEngine();
-            } else {
-                alert("At least one column is required.");
-            }
-        });
+      const titleInput = thElement.querySelector('.builder-col-title-input');
+      titleInput?.addEventListener('input', (e) => {
+        const idx = parseInt(e.target.dataset.colIndex, 10);
+        builderConfig.columns[idx].title = e.target.value;
+        const heading = e.target.closest('th').querySelector('.print-only-heading');
+        if (heading) heading.textContent = e.target.value;
+      });
+
+      const delBtn = thElement.querySelector('.delete-col-btn');
+      delBtn?.addEventListener('click', (e) => {
+        const idx = parseInt(e.currentTarget.dataset.colIndex, 10);
+        if (builderConfig.columns.length > 1) {
+          saveBuilderState();
+          builderConfig.columns.splice(idx, 1);
+          renderExportTab();
+          setupExcelEngine();
+        }
+      });
     };
 
     const rebindAllColumnListeners = () => {
-        document.querySelectorAll('.config-row-th').forEach(th => bindColumnListeners(th));
+      document.querySelectorAll('.config-row-th').forEach((th) => bindColumnListeners(th));
+    };
+
+    const syncDynamicPageOrientationStyle = () => {
+      let styleEl = document.getElementById('dynamic-worksheet-page-style');
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'dynamic-worksheet-page-style';
+        document.head.appendChild(styleEl);
+      }
+      const paperSize = builderConfig.paper === 'Legal' ? 'legal' : (builderConfig.paper === 'A3' ? 'A3' : 'A4');
+      const orient = builderConfig.orientation === 'landscape' ? 'landscape' : 'portrait';
+      styleEl.textContent = `@media print { @page { size: ${paperSize} ${orient}; margin: 8mm; } }`;
+    };
+
+    const updateCanvasStyle = () => {
+      const canvas = document.getElementById('print-canvas');
+      if (canvas) {
+        canvas.dataset.paper = builderConfig.paper;
+        canvas.dataset.orient = builderConfig.orientation;
+        canvas.style.zoom = String((builderConfig.zoom || 100) / 100);
+      }
+      syncDynamicPageOrientationStyle();
     };
 
     const attachBuilderListeners = () => {
-      document.querySelectorAll('.excel-tab').forEach(tab => tab.addEventListener('click', (e) => {
-          document.querySelectorAll('.excel-tab').forEach(t => t.classList.remove('active'));
-          document.querySelectorAll('.ribbon-panel').forEach(p => p.classList.remove('active'));
-          e.target.classList.add('active');
-          const targetId = e.target.dataset.ribbon;
+      document.querySelectorAll('.excel-tab').forEach((tab) =>
+        tab.addEventListener('click', (e) => {
+          const btn = e.currentTarget;
+          document.querySelectorAll('.excel-tab').forEach((t) => t.classList.remove('active'));
+          document.querySelectorAll('.ribbon-panel').forEach((p) => p.classList.remove('active'));
+          btn.classList.add('active');
+          const targetId = btn.dataset.ribbon;
           builderConfig.activeTab = targetId;
-          document.getElementById(`ribbon-${targetId}`).classList.add('active');
-      }));
+          document.getElementById(`ribbon-${targetId}`)?.classList.add('active');
+        })
+      );
 
-      // Dataset changes require full re-render
-      document.getElementById('builder-class')?.addEventListener('change', (e) => { builderConfig.classId = e.target.value; renderExportTab(); setupExcelEngine(); });
-      document.getElementById('builder-sort')?.addEventListener('change', (e) => { builderConfig.sortBy = e.target.value; renderExportTab(); setupExcelEngine();});
-      document.getElementById('builder-group')?.addEventListener('change', (e) => { builderConfig.groupBy = e.target.value; renderExportTab(); setupExcelEngine();});
-      document.getElementById('builder-paper')?.addEventListener('change', (e) => { builderConfig.paper = e.target.value; updateCanvasStyle(); });
-      document.getElementById('builder-orient')?.addEventListener('change', (e) => { builderConfig.orientation = e.target.value; updateCanvasStyle(); });
-      document.getElementById('builder-show-header')?.addEventListener('change', (e) => { builderConfig.showHeader = e.target.checked; renderExportTab(); setupExcelEngine();});
-      document.getElementById('builder-repeat-header')?.addEventListener('change', (e) => { builderConfig.repeatHeader = e.target.checked; renderExportTab(); setupExcelEngine();});
-      
-      document.getElementById('builder-custom-title')?.addEventListener('input', (e) => { 
-          builderConfig.customTitle = e.target.value; 
-          const el = document.querySelector('.print-custom-title');
-          if(el) el.textContent = e.target.value;
+      document.getElementById('builder-source-type')?.addEventListener('change', (e) => {
+        const newSource = e.target.value;
+        builderConfig.sourceType = newSource;
+        if (newSource === 'students') applyBuilderPreset('student_register');
+        else if (newSource === 'staff') applyBuilderPreset('staff_register');
+        else if (newSource === 'fees') applyBuilderPreset('fee_defaulters');
+        else if (newSource === 'results') applyBuilderPreset('exam_marklist');
+      });
+
+      document.getElementById('builder-academic-year')?.addEventListener('change', (e) => {
+        builderConfig.academicYearId = e.target.value;
+        renderExportTab();
+        setupExcelEngine();
+      });
+
+      document.getElementById('builder-class')?.addEventListener('change', (e) => {
+        builderConfig.classId = e.target.value;
+        renderExportTab();
+        setupExcelEngine();
+      });
+
+      document.getElementById('builder-staff-category')?.addEventListener('change', (e) => {
+        builderConfig.staffCategory = e.target.value;
+        renderExportTab();
+        setupExcelEngine();
+      });
+
+      document.getElementById('builder-fee-item')?.addEventListener('change', (e) => {
+        builderConfig.feeItemId = e.target.value;
+        renderExportTab();
+        setupExcelEngine();
+      });
+
+      document.getElementById('builder-exam-id')?.addEventListener('change', (e) => {
+        builderConfig.examId = e.target.value;
+        renderExportTab();
+        setupExcelEngine();
+      });
+
+      document.getElementById('builder-sort')?.addEventListener('change', (e) => {
+        builderConfig.sortBy = e.target.value;
+        renderExportTab();
+        setupExcelEngine();
+      });
+
+      document.getElementById('builder-group')?.addEventListener('change', (e) => {
+        builderConfig.groupBy = e.target.value;
+        renderExportTab();
+        setupExcelEngine();
+      });
+
+      document.querySelectorAll('.preset-template-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          const preset = e.currentTarget.dataset.preset;
+          if (preset) applyBuilderPreset(preset);
+        });
+      });
+
+      document.getElementById('builder-paper')?.addEventListener('change', (e) => {
+        builderConfig.paper = e.target.value;
+        updateCanvasStyle();
+      });
+      document.getElementById('builder-orient')?.addEventListener('change', (e) => {
+        builderConfig.orientation = e.target.value;
+        updateCanvasStyle();
+      });
+      document.getElementById('builder-density')?.addEventListener('change', (e) => {
+        builderConfig.rowDensity = e.target.value;
+        renderExportTab();
+        setupExcelEngine();
+      });
+      document.getElementById('builder-zoom')?.addEventListener('change', (e) => {
+        builderConfig.zoom = parseInt(e.target.value, 10) || 100;
+        updateCanvasStyle();
+      });
+      document.getElementById('builder-border-mode')?.addEventListener('change', (e) => {
+        builderConfig.borderMode = e.target.value;
+        renderExportTab();
+        setupExcelEngine();
+      });
+
+      document.getElementById('builder-show-header')?.addEventListener('change', (e) => {
+        builderConfig.showHeader = e.target.checked;
+        renderExportTab();
+        setupExcelEngine();
+      });
+      document.getElementById('builder-repeat-header')?.addEventListener('change', (e) => {
+        builderConfig.repeatHeader = e.target.checked;
+        renderExportTab();
+        setupExcelEngine();
+      });
+      document.getElementById('builder-show-signatures')?.addEventListener('change', (e) => {
+        builderConfig.showSignatures = e.target.checked;
+        renderExportTab();
+        setupExcelEngine();
+      });
+
+      document.getElementById('builder-custom-title')?.addEventListener('input', (e) => {
+        builderConfig.customTitle = e.target.value;
+        const el = document.querySelector('.print-custom-title');
+        if (el) el.textContent = e.target.value;
+      });
+
+      document.getElementById('builder-custom-subtitle')?.addEventListener('input', (e) => {
+        builderConfig.customSubtitle = e.target.value;
       });
 
       rebindAllColumnListeners();
 
-      // Targeted DOM update for columns (No full re-render)
       document.getElementById('btn-add-col')?.addEventListener('click', () => {
         saveBuilderState();
         const newColIdx = builderConfig.columns.length;
-        const newCol = { id: `col_${Date.now()}`, field: 'CUSTOM', title: 'New Column', width: '150px' };
+        const newCol = { id: `col_${Date.now()}`, field: 'CUSTOM', title: 'Custom Col', width: '120px' };
         builderConfig.columns.push(newCol);
-
-        const printHeaderTh = document.querySelector('.print-header-th');
-        if (printHeaderTh) printHeaderTh.colSpan = builderConfig.columns.length + 1;
-        
-        document.querySelectorAll('.page-break-before td[colspan]').forEach(td => td.colSpan = builderConfig.columns.length + 1);
-
-        const excelHeaderRow = document.querySelector('#builder-table thead tr:first-child');
-        const newExcelTh = document.createElement('th');
-        newExcelTh.className = "no-print col-header";
-        newExcelTh.dataset.col = newColIdx;
-        newExcelTh.title = `Select Column ${String.fromCharCode(65 + newColIdx)}`;
-        newExcelTh.textContent = String.fromCharCode(65 + newColIdx);
-        excelHeaderRow.appendChild(newExcelTh);
-
-        const configRow = document.querySelector('#builder-table thead tr.config-row');
-        const newConfigTh = document.createElement('th');
-        newConfigTh.className = "builder-th group config-row-th";
-        newConfigTh.style.width = newCol.width;
-        newConfigTh.innerHTML = `
-          <div class="col-resizer" data-col-index="${newColIdx}"></div>
-          <div class="no-print mb-1 flex items-center justify-between gap-1">
-            <select class="grid-select builder-col-select" data-col-index="${newColIdx}">
-              ${availableDataFields.map(f => `<option value="${f.id}" ${f.id === newCol.field ? 'selected' : ''}>${f.label}</option>`).join('')}
-            </select>
-            <button class="text-red-500 hover:bg-red-100 px-1 py-0.5 rounded delete-col-btn opacity-0 group-hover:opacity-100 transition-opacity" data-col-index="${newColIdx}" title="Remove Column"><i class="fas fa-times"></i></button>
-          </div>
-          <div class="no-print flex gap-1 items-center">
-            <input type="text" class="grid-input builder-col-title-input" value="${escapeHtml(newCol.title)}" placeholder="Heading..." data-col-index="${newColIdx}">
-          </div>
-          <div class="print-only-heading">${escapeHtml(newCol.title)}</div>
-        `;
-        configRow.appendChild(newConfigTh);
-
-        document.querySelectorAll('#builder-table tr[data-index]').forEach(tr => {
-            const rIndex = tr.dataset.index;
-            const td = document.createElement('td');
-            td.className = "excel-cell builder-cell";
-            td.contentEditable = "true";
-            td.dataset.row = rIndex;
-            td.dataset.col = newColIdx;
-            tr.appendChild(td);
-        });
-
-        bindColumnListeners(newConfigTh);
-        attachTableFormatListeners();
+        renderExportTab();
+        setupExcelEngine();
       });
 
       document.getElementById('btn-add-row')?.addEventListener('click', () => {
         saveBuilderState();
         const tbodys = document.querySelectorAll('#builder-table tbody');
-        if(tbodys.length === 0) return;
-        const targetTbody = tbodys[tbodys.length - 1]; 
+        if (tbodys.length === 0) return;
+        const targetTbody = tbodys[tbodys.length - 1];
         const colsCount = builderConfig.columns.length;
         const tr = document.createElement('tr');
-        const nextRowIdx = document.querySelectorAll('.row-header').length;
+        const nextRowIdx = document.querySelectorAll('#builder-table tr[data-index]').length;
         tr.dataset.index = nextRowIdx;
-        tr.dataset.studentId = ""; 
-        tr.innerHTML = `<td class="no-print row-header" data-row="${nextRowIdx}">${nextRowIdx + 1}</td>` + 
-                       Array.from({ length: colsCount }).map((_, cIndex) => `<td class="excel-cell builder-cell" contenteditable="true" data-row="${nextRowIdx}" data-col="${cIndex}"></td>`).join('');
+        tr.dataset.studentId = '';
+        tr.innerHTML =
+          `<td class="no-print row-header" data-row="${nextRowIdx}">${nextRowIdx + 1}</td>` +
+          Array.from({ length: colsCount })
+            .map((_, cIndex) => `<td class="excel-cell builder-cell" contenteditable="true" data-row="${nextRowIdx}" data-col="${cIndex}" style="border: 1px solid #000;"></td>`)
+            .join('');
         targetTbody.appendChild(tr);
         attachTableFormatListeners();
       });
 
-      const applyFormat = (styleProp, valueFn) => {
-          saveBuilderState();
-          document.querySelectorAll('.builder-cell.selected').forEach(td => {
-              td.style[styleProp] = typeof valueFn === 'function' ? valueFn(td.style[styleProp]) : valueFn;
-          });
-      };
-      
-      const getActiveFontSize = () => parseInt(document.getElementById('fmt-size-input').value) || 13;
-      const toggleStyle = (prop, val1, val2) => (currentVal) => currentVal === val1 ? val2 : val1;
+      document.getElementById('btn-del-row')?.addEventListener('click', () => {
+        const selectedCells = document.querySelectorAll('.builder-cell.selected');
+        if (selectedCells.length === 0) return;
+        saveBuilderState();
+        const rowsToDelete = new Set();
+        selectedCells.forEach((td) => {
+          const tr = td.closest('tr[data-index]');
+          if (tr) rowsToDelete.add(tr);
+        });
+        rowsToDelete.forEach((tr) => tr.remove());
+      });
 
-      document.getElementById('fmt-bold')?.addEventListener('click', () => applyFormat('fontWeight', toggleStyle('fontWeight', 'bold', 'normal')));
-      document.getElementById('fmt-italic')?.addEventListener('click', () => applyFormat('fontStyle', toggleStyle('fontStyle', 'italic', 'normal')));
-      
+      document.getElementById('btn-sum-row')?.addEventListener('click', () => {
+        saveBuilderState();
+        const tbodys = document.querySelectorAll('#builder-table tbody');
+        if (tbodys.length === 0) return;
+        const targetTbody = tbodys[tbodys.length - 1];
+        const colsCount = builderConfig.columns.length;
+        const nextRowIdx = document.querySelectorAll('#builder-table tr[data-index]').length;
+
+        const sums = Array.from({ length: colsCount }, (_, cIndex) => {
+          const colField = builderConfig.columns[cIndex]?.field;
+          if (colField === 'SNO') return '';
+          if (cIndex === 1 || colField === 'name') return 'TOTAL';
+          let sum = 0;
+          let numericCount = 0;
+          document.querySelectorAll(`#builder-table .builder-cell[data-col="${cIndex}"]`).forEach((td) => {
+            const raw = td.innerText.replace(/[,₹%\s]/g, '').trim();
+            if (raw !== '' && !isNaN(Number(raw))) {
+              sum += Number(raw);
+              numericCount++;
+            }
+          });
+          return numericCount > 0 ? sum.toFixed(sum % 1 === 0 ? 0 : 1) : '';
+        });
+
+        const tr = document.createElement('tr');
+        tr.dataset.index = nextRowIdx;
+        tr.dataset.studentId = '';
+        tr.innerHTML =
+          `<td class="no-print row-header font-bold" data-row="${nextRowIdx}">∑</td>` +
+          sums
+            .map(
+              (val, cIndex) =>
+                `<td class="excel-cell builder-cell" contenteditable="true" data-row="${nextRowIdx}" data-col="${cIndex}" style="font-weight: bold; background-color: #f1f5f9; border-top: 2px solid #000; border-bottom: 2px solid #000;">${escapeHtml(String(val))}</td>`
+            )
+            .join('');
+        targetTbody.appendChild(tr);
+        attachTableFormatListeners();
+      });
+
+      const getTargetCellsForFormat = () => {
+        const selected = document.querySelectorAll('.builder-cell.selected');
+        if (selected.length > 0) return Array.from(selected);
+        const focused = document.activeElement?.closest?.('.builder-cell');
+        return focused ? [focused] : [];
+      };
+
+      const applyFormat = (styleProp, valueFn) => {
+        const cells = getTargetCellsForFormat();
+        if (cells.length === 0) return;
+        saveBuilderState();
+        cells.forEach((td) => {
+          td.style[styleProp] = typeof valueFn === 'function' ? valueFn(td.style[styleProp], td) : valueFn;
+        });
+      };
+
+      const getActiveFontSize = () => parseInt(document.getElementById('fmt-size-input')?.value, 10) || 13;
+      const toggleStyle = (val1, val2) => (currentVal) => (currentVal === val1 ? val2 : val1);
+
+      document.getElementById('fmt-font-family')?.addEventListener('change', (e) => applyFormat('fontFamily', e.target.value));
+      document.getElementById('fmt-bold')?.addEventListener('click', () => applyFormat('fontWeight', toggleStyle('bold', 'normal')));
+      document.getElementById('fmt-italic')?.addEventListener('click', () => applyFormat('fontStyle', toggleStyle('italic', 'normal')));
+      document.getElementById('fmt-underline')?.addEventListener('click', () => applyFormat('textDecoration', toggleStyle('underline', 'none')));
+
+      document.getElementById('fmt-align-left')?.addEventListener('click', () => applyFormat('textAlign', 'left'));
+      document.getElementById('fmt-align-center')?.addEventListener('click', () => applyFormat('textAlign', 'center'));
+      document.getElementById('fmt-align-right')?.addEventListener('click', () => applyFormat('textAlign', 'right'));
+      document.getElementById('fmt-wrap')?.addEventListener('click', () =>
+        applyFormat('whiteSpace', (cur) => (cur === 'normal' ? 'nowrap' : 'normal'))
+      );
+
+      document.getElementById('fmt-border-all')?.addEventListener('click', () => applyFormat('border', '1px solid #000000'));
+      document.getElementById('fmt-border-thick')?.addEventListener('click', () => applyFormat('border', '2px solid #000000'));
+      document.getElementById('fmt-border-none')?.addEventListener('click', () => applyFormat('border', '1px solid transparent'));
+
+      document.getElementById('fmt-clear')?.addEventListener('click', () => {
+        const cells = getTargetCellsForFormat();
+        if (cells.length === 0) return;
+        saveBuilderState();
+        cells.forEach((td) => {
+          td.style.fontWeight = 'normal';
+          td.style.fontStyle = 'normal';
+          td.style.textDecoration = 'none';
+          td.style.backgroundColor = '';
+          td.style.color = '';
+          td.style.textAlign = '';
+        });
+      });
+
+      document.getElementById('fmt-merge')?.addEventListener('click', () => {
+        const selected = Array.from(document.querySelectorAll('.builder-cell.selected'));
+        if (selected.length < 2) return;
+        saveBuilderState();
+        const rows = selected.map((c) => parseInt(c.dataset.row, 10));
+        const cols = selected.map((c) => parseInt(c.dataset.col, 10));
+        const minR = Math.min(...rows);
+        const maxR = Math.max(...rows);
+        const minC = Math.min(...cols);
+        const maxC = Math.max(...cols);
+
+        const anchor = selected.find((c) => parseInt(c.dataset.row, 10) === minR && parseInt(c.dataset.col, 10) === minC);
+        if (!anchor) return;
+
+        const combinedText = selected
+          .map((c) => c.innerText.trim())
+          .filter(Boolean)
+          .join(' ');
+
+        anchor.rowSpan = maxR - minR + 1;
+        anchor.colSpan = maxC - minC + 1;
+        if (combinedText) anchor.innerText = combinedText;
+        anchor.style.textAlign = 'center';
+        anchor.style.verticalAlign = 'middle';
+
+        selected.forEach((c) => {
+          if (c !== anchor) c.style.display = 'none';
+        });
+      });
+
+      document.getElementById('fmt-unmerge')?.addEventListener('click', () => {
+        saveBuilderState();
+        document.querySelectorAll('.builder-cell').forEach((c) => {
+          if (c.rowSpan > 1 || c.colSpan > 1) {
+            c.rowSpan = 1;
+            c.colSpan = 1;
+          }
+          if (c.style.display === 'none') {
+            c.style.display = '';
+          }
+        });
+      });
+
       document.getElementById('fmt-color')?.addEventListener('input', (e) => {
-          const indicator = e.target.parentElement.querySelector('.indicator-color');
-          if(indicator) indicator.style.backgroundColor = e.target.value;
-          applyFormat('color', e.target.value);
+        const indicator = e.target.parentElement.querySelector('.indicator-color');
+        if (indicator) indicator.style.backgroundColor = e.target.value;
+        applyFormat('color', e.target.value);
       });
       document.getElementById('fmt-bg')?.addEventListener('input', (e) => {
-          const indicator = e.target.parentElement.querySelector('.indicator-bg');
-          if(indicator) indicator.style.backgroundColor = e.target.value;
-          applyFormat('backgroundColor', e.target.value);
+        const indicator = e.target.parentElement.querySelector('.indicator-bg');
+        if (indicator) indicator.style.backgroundColor = e.target.value;
+        applyFormat('backgroundColor', e.target.value);
       });
-      
+
       document.getElementById('fmt-size-plus')?.addEventListener('click', () => {
-          let size = getActiveFontSize() + 1;
-          document.getElementById('fmt-size-input').value = size;
-          applyFormat('fontSize', size + 'px');
+        const size = getActiveFontSize() + 1;
+        document.getElementById('fmt-size-input').value = size;
+        applyFormat('fontSize', size + 'px');
       });
       document.getElementById('fmt-size-minus')?.addEventListener('click', () => {
-          let size = Math.max(8, getActiveFontSize() - 1);
-          document.getElementById('fmt-size-input').value = size;
-          applyFormat('fontSize', size + 'px');
+        const size = Math.max(8, getActiveFontSize() - 1);
+        document.getElementById('fmt-size-input').value = size;
+        applyFormat('fontSize', size + 'px');
       });
       document.getElementById('fmt-size-input')?.addEventListener('change', (e) => {
-          applyFormat('fontSize', e.target.value + 'px');
+        applyFormat('fontSize', e.target.value + 'px');
       });
 
       document.getElementById('fmt-undo')?.addEventListener('click', undoBuilder);
       document.getElementById('fmt-redo')?.addEventListener('click', redoBuilder);
 
       document.getElementById('btn-export-print')?.addEventListener('click', () => {
-        document.querySelectorAll('.builder-cell, .col-header, .row-header, .select-all-corner').forEach(c => c.classList.remove('selected'));
+        syncDynamicPageOrientationStyle();
+        document.querySelectorAll('.builder-cell, .col-header, .row-header, .select-all-corner').forEach((c) => c.classList.remove('selected'));
         document.body.classList.add('is-printing');
         window.print();
         setTimeout(() => document.body.classList.remove('is-printing'), 500);
       });
 
       document.getElementById('btn-export-excel')?.addEventListener('click', () => {
-        if(typeof XLSX === 'undefined') { alert("Excel library loading, please try again."); return; }
+        if (typeof XLSX === 'undefined') return;
         const tableClone = document.getElementById('builder-table').cloneNode(true);
-        tableClone.querySelectorAll('.no-print').forEach(el => el.remove());
-        tableClone.querySelectorAll('th').forEach(th => {
-           const heading = th.querySelector('.print-only-heading');
-           if(heading) th.textContent = heading.textContent;
+        tableClone.querySelectorAll('.no-print').forEach((el) => el.remove());
+        tableClone.querySelectorAll('td[style*="display: none"]').forEach((el) => el.remove());
+        tableClone.querySelectorAll('th').forEach((th) => {
+          const heading = th.querySelector('.print-only-heading');
+          if (heading) th.textContent = heading.textContent;
         });
-        const wb = XLSX.utils.table_to_book(tableClone, {sheet: "Report"});
-        XLSX.writeFile(wb, `${builderConfig.classId ? 'Class_'+builderConfig.classId : 'Report'}_${formatDate(new Date())}.xlsx`);
+        const wb = XLSX.utils.table_to_book(tableClone, { sheet: 'Worksheet' });
+        const prefix = builderConfig.sourceType.toUpperCase();
+        const sub = builderConfig.sourceType === 'staff' ? builderConfig.staffCategory : (builderConfig.classId || 'Sheet');
+        XLSX.writeFile(wb, `${prefix}_${sub}_${formatDate(new Date())}.xlsx`);
       });
-    };
-
-    const updateCanvasStyle = () => {
-      const canvas = document.getElementById('print-canvas');
-      if(canvas) {
-        canvas.dataset.paper = builderConfig.paper;
-        canvas.dataset.orient = builderConfig.orientation;
-      }
     };
 
     const attachTableFormatListeners = () => {
@@ -2733,7 +3604,21 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
     };
 
     const loadData = async () => {
-      const [studentsSnap, staffSnap, groupsSnap, dirSnap, contentSnap, configSnap, authConfigSnap, pageAccessSnap, academicYearsSnap] = await Promise.all([
+      const [
+        studentsSnap,
+        staffSnap,
+        groupsSnap,
+        dirSnap,
+        contentSnap,
+        configSnap,
+        authConfigSnap,
+        pageAccessSnap,
+        academicYearsSnap,
+        feeItemsSnap,
+        paymentsSnap,
+        examsSnap,
+        marksSnap
+      ] = await Promise.all([
         getDocs(collection(db, `${BASE_PATH}/students`)),
         getDocs(collection(db, `${BASE_PATH}/staff`)),
         getDocs(collection(db, `${BASE_PATH}/studentGroups`)),
@@ -2742,12 +3627,23 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
         getDoc(doc(db, `${BASE_PATH}/settings`, 'config')),
         getDoc(doc(db, `${BASE_PATH}/settings`, 'categoryAuthConfig')),
         getDoc(doc(db, `${BASE_PATH}/settings`, 'pageAccess')),
-        getDoc(doc(db, `${BASE_PATH}/settings`, 'academicYears'))
+        getDoc(doc(db, `${BASE_PATH}/settings`, 'academicYears')),
+        getDocs(collection(db, `${BASE_PATH}/feeItems`)).catch(() => ({ docs: [] })),
+        getDocs(collection(db, `${BASE_PATH}/payments`)).catch(() => ({ docs: [] })),
+        getDocs(collection(db, `${BASE_PATH}/exams`)).catch(() => ({ docs: [] })),
+        getDocs(collection(db, `${BASE_PATH}/marks`)).catch(() => ({ docs: [] }))
       ]);
       allStudents = studentsSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
       allStaff = staffSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
       studentGroups = groupsSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
       directoryEntries = dirSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+      allFeeItems = feeItemsSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+      allPayments = paymentsSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+      allExams = examsSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+      allMarks = {};
+      marksSnap.docs.forEach((docSnap) => {
+        allMarks[docSnap.id] = docSnap.data();
+      });
       const content = contentSnap.exists() ? contentSnap.data() : {};
       directoryCategories = Array.isArray(content.directoryCategories) ? content.directoryCategories : [];
       categoryAuthConfig = authConfigSnap.exists() ? { categories: {}, ...(authConfigSnap.data() || {}) } : { categories: {} };
@@ -2758,6 +3654,9 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       activeAcademicYearId = activeYearObj ? activeYearObj.id : '';
       if (!officialFilters.academicYearId && activeAcademicYearId) {
         officialFilters.academicYearId = activeAcademicYearId;
+      }
+      if (!builderConfig.academicYearId && activeAcademicYearId) {
+        builderConfig.academicYearId = activeAcademicYearId;
       }
       const conf = configSnap.exists() ? configSnap.data() : {};
       applyOfficialBranding(conf);

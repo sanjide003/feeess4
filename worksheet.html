@@ -289,27 +289,35 @@
     .excel-workspace::-webkit-scrollbar-thumb { background: #c8c6c4; border: 2px solid #f3f2f1; border-radius: 6px; }
     .excel-workspace::-webkit-scrollbar-thumb:hover { background: #a19f9d; }
 
-    .print-canvas { background: #fff; margin: 0 auto; min-height: 600px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); position: relative; overflow: visible; border-right: 2px dashed #ef4444;}
+    .print-canvas { background: #fff; margin: 0 auto; min-height: 600px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); position: relative; overflow: visible; border-right: 2px dashed #ef4444; transform-origin: top center; transition: width 0.2s ease;}
     .print-canvas[data-paper="A4"][data-orient="portrait"] { width: 210mm; }
     .print-canvas[data-paper="A4"][data-orient="landscape"] { width: 297mm; }
     .print-canvas[data-paper="Legal"][data-orient="portrait"] { width: 8.5in; }
     .print-canvas[data-paper="Legal"][data-orient="landscape"] { width: 14in; }
+    .print-canvas[data-paper="A3"][data-orient="portrait"] { width: 297mm; }
+    .print-canvas[data-paper="A3"][data-orient="landscape"] { width: 420mm; }
+    .print-canvas[data-margin="narrow"] { padding: 4mm; }
+    .print-canvas[data-margin="normal"] { padding: 10mm; }
+    .print-canvas[data-margin="wide"] { padding: 18mm; }
 
-    .excel-table { border-collapse: collapse; min-width: 100%; table-layout: auto;}
-    .excel-table th, .excel-table td { border: 1px solid #d4d4d4; padding: 4px; font-size: 13px; color: #000; background: #fff; vertical-align: bottom;}
+    .excel-table { border-collapse: collapse; min-width: 100%; width: 100%; table-layout: auto;}
+    .excel-table th, .excel-table td { border: 1px solid #d4d4d4; padding: 4px 6px; font-size: 13px; color: #000; background: #fff; vertical-align: middle;}
+    .excel-table.hide-gridlines td.excel-cell { border-color: transparent; }
+    .excel-table.print-gridlines-off td.excel-cell { border-color: #e5e7eb; }
     
     .col-header, .row-header, .select-all-corner { background-color: #e6e6e6 !important; color: #333 !important; text-align: center !important; font-size: 12px !important; font-weight: normal !important; user-select: none; cursor: pointer; padding: 2px !important;}
     .col-header:hover, .row-header:hover, .select-all-corner:hover { background-color: #d4d4d4 !important; }
     .col-header.selected, .row-header.selected, .select-all-corner.selected { background-color: #cacaca !important; color: #107c41 !important; font-weight: bold !important; border-bottom: 2px solid #107c41 !important;}
     .row-header.selected { border-bottom: 1px solid #d4d4d4 !important; border-right: 2px solid #107c41 !important;}
 
-    .excel-cell { outline: none; transition: 0.1s; white-space: nowrap; overflow: hidden; position: relative;}
+    .excel-cell { outline: none; transition: 0.08s; white-space: nowrap; overflow: hidden; position: relative;}
+    .excel-cell.wrap-text { white-space: pre-wrap !important; word-break: break-word !important; }
     .excel-cell.selected { background-color: #e5f3eb !important; }
     .excel-cell.selected::after { content: ''; position: absolute; inset: -1px; border: 2px solid #107c41; z-index: 10; pointer-events: none; }
     .excel-cell:focus { z-index: 12; }
     .excel-cell:focus::after { content: ''; position: absolute; inset: -1px; border: 2px solid #107c41; z-index: 12; pointer-events: none; }
 
-    .config-row th { background: #f8fafc; padding: 4px; border-bottom: none;}
+    .config-row th { background: #f8fafc; padding: 4px; border-bottom: 2px solid #334155;}
     .grid-select { width: 100%; border: 1px solid #c8c6c4; padding: 2px; font-size: 11px; outline: none; color: #333; border-radius: 2px;}
     .grid-select:focus { border-color: #107c41;}
     .grid-input { width: 100%; border: 1px solid transparent; padding: 2px 4px; font-size: 12px; font-weight: bold; outline: none; color: #000; border-top: none;}
@@ -324,9 +332,13 @@
     .builder-print-header { display: none; }
     .builder-print-header.repeat-header { display: table-header-group; }
     .print-header-content { text-align: center; padding-bottom: 12px; margin-bottom: 8px; border-bottom: 2px solid #333; }
-    .print-inst-name { font-size: 24px; font-weight: 900; text-transform: uppercase; color: #0f172a; margin: 0; }
-    .print-inst-sub { font-size: 14px; font-weight: 600; color: #334155; margin: 2px 0; }
-    .print-custom-title { font-size: 18px; font-weight: 800; color: #1e3a8a; margin-top: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .print-inst-name { font-size: 22px; font-weight: 900; text-transform: uppercase; color: #0f172a; margin: 0; }
+    .print-inst-sub { font-size: 13px; font-weight: 600; color: #334155; margin: 2px 0; }
+    .print-custom-title { font-size: 16px; font-weight: 800; color: #1e3a8a; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .builder-signature-footer { display: none; margin-top: 28px; padding-top: 18px; page-break-inside: avoid; }
+    .builder-signature-footer.visible-footer { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; text-align: center; font-size: 12px; font-weight: 700; color: #1e293b; }
+    .sig-line { border-top: 1.5px dashed #334155; padding-top: 6px; width: 80%; margin: 24px auto 0; }
 
     @media print {
         body.is-printing { background: #fff; margin: 0; padding: 0; }
@@ -334,11 +346,12 @@
         body.is-printing #print-canvas, body.is-printing #print-canvas * { visibility: visible; }
         body.is-printing #print-canvas { position: absolute; left: 0; top: 0; width: 100% !important; max-width: none !important; margin: 0; padding: 0; border: none; box-shadow: none; overflow: visible; }
         body.is-printing .no-print { display: none !important; }
-        body.is-printing .print-only-heading { display: block !important; font-size: 13px; font-weight: bold; text-align: center; padding: 4px; border-bottom: 1px solid #000;}
+        body.is-printing .print-only-heading { display: block !important; font-size: 12px; font-weight: 800; text-align: center; padding: 4px; color: #000; }
+        body.is-printing .config-row th { border: 1px solid #000 !important; background: #f1f5f9 !important; }
         body.is-printing .builder-print-header { display: table-header-group !important; }
+        body.is-printing .excel-table.print-gridlines-off td.excel-cell { border-color: transparent !important; }
         body.is-printing .excel-cell { white-space: normal; word-break: break-word;}
         .page-break-before { page-break-before: always; break-before: page; }
-        @page { margin: 1cm; }
     }
   </style>
 </head>

@@ -3406,35 +3406,96 @@ const compareClassesHighToLow = (a = '', b = '') => {
     if (rankDiff !== 0) return rankDiff;
     return String(b || '').localeCompare(String(a || ''), undefined, { numeric: true, sensitivity: 'base' });
 };
-const studentConcGroupSearchText = (student = {}) => [student.name, student.adm, student.class, student.concessionFee]
+const studentConcGroupSearchText = (student = {}) => [student.name, student.adm, student.class, student.concessionFee, student.guardian, student.father]
     .map((value) => String(value || '').toLowerCase())
     .join(' ');
 const groupConcGroupSearchText = (group = {}, members = []) => [
     group.fee,
-    ...members.flatMap((member) => [member.name, member.adm, member.class])
+    group.name,
+    ...members.flatMap((member) => [member.name, member.adm, member.class, member.guardian, member.father])
 ].map((value) => String(value || '').toLowerCase()).join(' ');
+
+let concGroupActiveView = 'both'; // 'both' | 'concession' | 'group'
+
 const renderConcessionGroupOverview = () => {
     const yearSelect = document.getElementById('conc-group-year-select');
+    const classSelect = document.getElementById('conc-group-class-select');
     const searchInput = document.getElementById('conc-group-search-input');
+    const clearSearchBtn = document.getElementById('conc-group-search-clear');
+    const viewTabsWrap = document.getElementById('conc-group-view-tabs');
+
     const selectedYear = yearSelect?.value || currentWorkingAcademicYear || getAcademicYearFromDate();
     if (yearSelect && !yearSelect.dataset.bound) {
         const years = [...new Set(students.map((s) => s.academicYear).filter(Boolean).concat([currentWorkingAcademicYear]).filter(Boolean))].sort(compareAcademicYears);
         yearSelect.innerHTML = years.map((year) => `<option value="${year}">${year}</option>`).join('');
         yearSelect.value = selectedYear;
         yearSelect.dataset.bound = '1';
-        yearSelect.addEventListener('change', renderConcessionGroupOverview);
+        yearSelect.addEventListener('change', () => {
+            if (classSelect) delete classSelect.dataset.populatedYear;
+            renderConcessionGroupOverview();
+        });
     }
+
+    const activeYear = yearSelect?.value || selectedYear;
+    const yearStudents = students.filter((student) => (student.academicYear || '') === activeYear);
+
+    if (classSelect && classSelect.dataset.populatedYear !== activeYear) {
+        const prevClass = classSelect.value || '';
+        const uniqueClasses = [...new Set(yearStudents.map((s) => s.class).filter(Boolean))].sort(compareClassesHighToLow);
+        classSelect.innerHTML = `<option value="">All Classes</option>` + uniqueClasses.map((cls) => `<option value="${escapeHtml(cls)}">Class: ${escapeHtml(cls)}</option>`).join('');
+        if (prevClass && uniqueClasses.includes(prevClass)) {
+            classSelect.value = prevClass;
+        }
+        classSelect.dataset.populatedYear = activeYear;
+        if (!classSelect.dataset.bound) {
+            classSelect.dataset.bound = '1';
+            classSelect.addEventListener('change', renderConcessionGroupOverview);
+        }
+    }
+
     if (searchInput && !searchInput.dataset.bound) {
         searchInput.dataset.bound = '1';
         searchInput.addEventListener('input', renderConcessionGroupOverview);
     }
-    const activeYear = yearSelect?.value || selectedYear;
+
+    if (clearSearchBtn && !clearSearchBtn.dataset.bound) {
+        clearSearchBtn.dataset.bound = '1';
+        clearSearchBtn.addEventListener('click', () => {
+            if (searchInput) searchInput.value = '';
+            renderConcessionGroupOverview();
+        });
+    }
+
+    if (viewTabsWrap && !viewTabsWrap.dataset.bound) {
+        viewTabsWrap.dataset.bound = '1';
+        viewTabsWrap.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-conc-view]');
+            if (!btn) return;
+            concGroupActiveView = btn.dataset.concView || 'both';
+            viewTabsWrap.querySelectorAll('.conc-view-tab-btn').forEach((b) => {
+                const isActive = b.dataset.concView === concGroupActiveView;
+                b.className = isActive
+                    ? 'conc-view-tab-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-blue-700 shadow-xs transition'
+                    : 'conc-view-tab-btn px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition';
+            });
+            renderConcessionGroupOverview();
+        });
+    }
+
     const searchTerm = (searchInput?.value || '').trim().toLowerCase();
-    const yearStudents = students.filter((student) => (student.academicYear || '') === activeYear);
+    const selectedClass = classSelect?.value || '';
+
+    if (clearSearchBtn) {
+        clearSearchBtn.classList.toggle('hidden', !searchTerm);
+        clearSearchBtn.classList.toggle('inline-flex', Boolean(searchTerm));
+    }
+
     const concessionStudents = yearStudents
         .filter((student) => student.concessionFee !== undefined && student.concessionFee !== null && student.concessionFee !== '')
+        .filter((student) => !selectedClass || student.class === selectedClass)
         .filter((student) => !searchTerm || studentConcGroupSearchText(student).includes(searchTerm))
-        .sort((a, b) => compareClassesHighToLow(a.class, b.class) || String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }));
+        .sort((a, b) => compareClassesHighToLow(a.class, b.class) || String(a.adm || '').localeCompare(String(b.adm || ''), undefined, { numeric: true }) || String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }));
+
     const groupEntries = studentGroups
         .filter((group) => (group.academicYear || activeYear) === activeYear)
         .map((group) => ({
@@ -3444,6 +3505,8 @@ const renderConcessionGroupOverview = () => {
                 .filter(Boolean)
                 .sort((a, b) => compareClassesHighToLow(a.class, b.class) || String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }))
         }))
+        .filter((entry) => entry.members.length > 0)
+        .filter((entry) => !selectedClass || entry.members.some((m) => m.class === selectedClass))
         .filter((entry) => !searchTerm || groupConcGroupSearchText(entry.group, entry.members).includes(searchTerm))
         .sort((a, b) => {
             const topClassA = a.members[0]?.class || '';
@@ -3451,20 +3514,177 @@ const renderConcessionGroupOverview = () => {
             return compareClassesHighToLow(topClassA, topClassB)
                 || String(a.members[0]?.name || '').localeCompare(String(b.members[0]?.name || ''), undefined, { sensitivity: 'base' });
         });
-    const groupRows = groupEntries.map(({ group, members }, idx) => `<div class="bg-white border border-blue-100 rounded-xl p-4">
-        <div class="font-bold text-blue-800 mb-2">Group ${idx + 1} ${group.fee ? `<span class="text-xs bg-blue-50 px-2 py-1 rounded ml-2">₹${group.fee}/month</span>` : ''}</div>
-        <div class="space-y-1 text-sm">${members.map((member) => `<div>${escapeHtml(member.name || '--')} <span class="text-gray-500">(${escapeHtml(member.class || '--')}${member.adm ? ` · Adm: ${escapeHtml(member.adm)}` : ''})</span></div>`).join('') || '<div class="text-gray-400">No members</div>'}</div>
-    </div>`);
-    const emptyLabel = searchTerm ? 'No matching records' : 'No concessions';
-    const emptyGroupLabel = searchTerm ? 'No matching groups' : 'No groups';
-    document.getElementById('conc-group-summary').innerHTML = `
-        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3"><div class="text-xs uppercase font-bold text-emerald-700">Concession Students</div><div class="text-2xl font-bold text-emerald-800">${concessionStudents.length}</div></div>
-        <div class="bg-blue-50 border border-blue-200 rounded-xl p-3"><div class="text-xs uppercase font-bold text-blue-700">Groups</div><div class="text-2xl font-bold text-blue-800">${groupRows.length}</div></div>`;
-    document.getElementById('conc-group-content').innerHTML = `
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="bg-white border border-gray-200 rounded-xl p-4"><div class="font-bold mb-2 text-gray-800">Concession List</div>${concessionStudents.map((student, idx) => `<div class="text-sm py-1 border-b">${idx + 1}. ${escapeHtml(student.name || '--')} <span class="text-gray-500">(${escapeHtml(student.class || '--')}${student.adm ? ` · Adm: ${escapeHtml(student.adm)}` : ''})</span> <span class="font-bold text-emerald-700">₹${escapeHtml(String(student.concessionFee))}</span></div>`).join('') || `<div class="text-sm text-gray-500">${emptyLabel}</div>`}</div>
-            <div><div class="font-bold mb-2 text-gray-800">Group List</div><div class="space-y-3">${groupRows.join('') || `<div class="text-sm text-gray-500">${emptyGroupLabel}</div>`}</div></div>
-        </div>`;
+
+    const totalGroupedStudentsCount = groupEntries.reduce((sum, entry) => sum + entry.members.length, 0);
+
+    const summaryEl = document.getElementById('conc-group-summary');
+    if (summaryEl) {
+        summaryEl.innerHTML = `
+            <div class="bg-emerald-50/80 border border-emerald-200 rounded-xl p-3.5 flex items-center justify-between">
+                <div>
+                    <div class="text-[11px] uppercase font-extrabold text-emerald-700 tracking-wide">Concession Students</div>
+                    <div class="text-2xl font-black text-emerald-900 mt-0.5">${concessionStudents.length}</div>
+                </div>
+                <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-lg"><i class="fas fa-percent"></i></div>
+            </div>
+            <div class="bg-blue-50/80 border border-blue-200 rounded-xl p-3.5 flex items-center justify-between">
+                <div>
+                    <div class="text-[11px] uppercase font-extrabold text-blue-700 tracking-wide">Concession Groups</div>
+                    <div class="text-2xl font-black text-blue-900 mt-0.5">${groupEntries.length}</div>
+                </div>
+                <div class="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-lg"><i class="fas fa-users"></i></div>
+            </div>
+            <div class="bg-indigo-50/80 border border-indigo-200 rounded-xl p-3.5 flex items-center justify-between">
+                <div>
+                    <div class="text-[11px] uppercase font-extrabold text-indigo-700 tracking-wide">Students in Groups</div>
+                    <div class="text-2xl font-black text-indigo-900 mt-0.5">${totalGroupedStudentsCount}</div>
+                </div>
+                <div class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center text-lg"><i class="fas fa-user-friends"></i></div>
+            </div>
+        `;
+    }
+
+    const emptyConcLabel = searchTerm || selectedClass ? 'No matching concession students found.' : 'No concession students configured for this academic year.';
+    const emptyGroupLabel = searchTerm || selectedClass ? 'No matching groups found.' : 'No concession groups configured for this academic year.';
+
+    // Build Concession Table HTML
+    const concessionTableHtml = `
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs flex flex-col">
+            <div class="px-4 py-3 bg-emerald-50/70 border-b border-emerald-200 flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-6 h-6 rounded-lg bg-emerald-600 text-white inline-flex items-center justify-center text-xs"><i class="fas fa-user-tag"></i></span>
+                    <h3 class="font-extrabold text-slate-800 text-sm">Individual Concession Table</h3>
+                </div>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">${concessionStudents.length} Students</span>
+            </div>
+            <div class="overflow-x-auto custom-scroll max-h-[68vh]">
+                ${concessionStudents.length > 0 ? `
+                <table class="w-full text-xs text-left border-collapse">
+                    <thead class="bg-slate-100 text-slate-700 uppercase font-extrabold sticky top-0 z-10 border-b border-slate-200 shadow-2xs">
+                        <tr>
+                            <th class="py-2.5 px-3 w-12 text-center border-r border-slate-200">#</th>
+                            <th class="py-2.5 px-3 w-24 border-r border-slate-200">Adm No</th>
+                            <th class="py-2.5 px-3 border-r border-slate-200 min-w-[170px]">Student Name</th>
+                            <th class="py-2.5 px-3 w-20 text-center border-r border-slate-200">Class</th>
+                            <th class="py-2.5 px-3 w-28 text-right">Concession Fee</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        ${concessionStudents.map((student, idx) => {
+                            const guardian = student.guardian || student.father || '';
+                            const normalFeeVal = Number(defaultFee || 200);
+                            const concFeeVal = Number(student.concessionFee || 0);
+                            const discountVal = normalFeeVal > concFeeVal ? normalFeeVal - concFeeVal : 0;
+                            return `
+                            <tr class="hover:bg-emerald-50/40 transition cursor-pointer" onclick="window.openStudentProfile && window.openStudentProfile('${escapeHtml(student.id)}')" title="Click to view profile">
+                                <td class="py-2.5 px-3 text-center font-mono font-bold text-slate-400 border-r border-slate-100">${idx + 1}</td>
+                                <td class="py-2.5 px-3 font-mono font-bold text-slate-700 border-r border-slate-100 whitespace-nowrap">${escapeHtml(student.adm || '-')}</td>
+                                <td class="py-2.5 px-3 border-r border-slate-100">
+                                    <div class="font-bold text-slate-900 leading-snug">${escapeHtml(student.name || '--')}</div>
+                                    ${guardian ? `<div class="text-[10px] text-slate-500 mt-0.5 truncate max-w-[220px]"><i class="fas fa-user-shield text-[9px] mr-1 text-slate-400"></i>${escapeHtml(guardian)}</div>` : ''}
+                                </td>
+                                <td class="py-2.5 px-3 text-center border-r border-slate-100 whitespace-nowrap">
+                                    <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 font-bold text-[11px] border border-slate-200">${escapeHtml(student.class || '--')}</span>
+                                </td>
+                                <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                                    <span class="inline-flex items-center px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 font-mono font-extrabold text-xs border border-emerald-200">
+                                        ₹${escapeHtml(String(student.concessionFee))}/mo
+                                    </span>
+                                    ${discountVal > 0 ? `<div class="text-[9px] font-semibold text-emerald-600 mt-0.5">Saves ₹${discountVal}/mo</div>` : ''}
+                                </td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+                ` : `<div class="p-8 text-center text-xs font-semibold text-slate-400">${emptyConcLabel}</div>`}
+            </div>
+        </div>
+    `;
+
+    // Build Group List Table HTML
+    const groupTableHtml = `
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs flex flex-col">
+            <div class="px-4 py-3 bg-blue-50/70 border-b border-blue-200 flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-6 h-6 rounded-lg bg-blue-600 text-white inline-flex items-center justify-center text-xs"><i class="fas fa-users"></i></span>
+                    <h3 class="font-extrabold text-slate-800 text-sm">Concession Group Table (Family / Siblings)</h3>
+                </div>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-blue-100 text-blue-800 border border-blue-200">${groupEntries.length} Groups</span>
+            </div>
+            <div class="overflow-x-auto custom-scroll max-h-[68vh]">
+                ${groupEntries.length > 0 ? `
+                <table class="w-full text-xs text-left border-collapse">
+                    <thead class="bg-slate-100 text-slate-700 uppercase font-extrabold sticky top-0 z-10 border-b border-slate-200 shadow-2xs">
+                        <tr>
+                            <th class="py-2.5 px-3 w-24 text-center border-r border-slate-200">Group #</th>
+                            <th class="py-2.5 px-3 border-r border-slate-200 min-w-[260px]">Group Members (Students)</th>
+                            <th class="py-2.5 px-3 w-24 text-center border-r border-slate-200">Classes</th>
+                            <th class="py-2.5 px-3 w-32 text-right">Group Fee</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200">
+                        ${groupEntries.map(({ group, members }, idx) => {
+                            const primaryGuardian = members.map((m) => m.guardian || m.father).find(Boolean) || '';
+                            const distinctClasses = [...new Set(members.map((m) => m.class).filter(Boolean))];
+                            const groupFeeDisplay = group.fee ? `₹${escapeHtml(String(group.fee))}/mo` : `₹${escapeHtml(String(defaultFee || 200))}/mo`;
+
+                            const membersSubRows = members.map((member, mIdx) => `
+                                <div class="flex items-center justify-between gap-2 py-1.5 ${mIdx > 0 ? 'border-t border-slate-100' : ''} hover:bg-blue-50/50 px-1.5 rounded transition cursor-pointer"
+                                     onclick="window.openStudentProfile && window.openStudentProfile('${escapeHtml(member.id)}')"
+                                     title="Click to view ${escapeHtml(member.name || 'student')} profile">
+                                    <div class="flex items-center gap-2 min-w-0">
+                                        <span class="w-4 h-4 rounded-full bg-blue-100 text-blue-700 font-mono text-[10px] font-bold inline-flex items-center justify-center flex-shrink-0">${mIdx + 1}</span>
+                                        <span class="font-bold text-slate-900 truncate">${escapeHtml(member.name || '--')}</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5 flex-shrink-0">
+                                        <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[10px] font-bold border border-slate-200">Adm: ${escapeHtml(member.adm || '-')}</span>
+                                        <span class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-bold text-[10px] border border-blue-200">Cls: ${escapeHtml(member.class || '-')}</span>
+                                    </div>
+                                </div>
+                            `).join('');
+
+                            return `
+                            <tr class="hover:bg-slate-50/70 transition align-top">
+                                <td class="py-3 px-3 text-center border-r border-slate-100 whitespace-nowrap">
+                                    <div class="inline-flex flex-col items-center">
+                                        <span class="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-extrabold text-[11px] shadow-2xs">Group ${idx + 1}</span>
+                                        <span class="text-[10px] font-bold text-slate-500 mt-1">${members.length} ${members.length === 1 ? 'Child' : 'Children'}</span>
+                                    </div>
+                                </td>
+                                <td class="py-2 px-3 border-r border-slate-100">
+                                    ${primaryGuardian ? `<div class="text-[10px] font-bold text-slate-500 mb-1 px-1.5 flex items-center gap-1"><i class="fas fa-house-user text-blue-500"></i> Guardian: <span class="text-slate-700">${escapeHtml(primaryGuardian)}</span></div>` : ''}
+                                    <div class="divide-y divide-slate-100">${membersSubRows}</div>
+                                </td>
+                                <td class="py-3 px-3 text-center border-r border-slate-100">
+                                    <div class="flex flex-wrap items-center justify-center gap-1">
+                                        ${distinctClasses.map((cls) => `<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 font-bold text-[10px] border border-slate-200">${escapeHtml(cls)}</span>`).join('') || '-'}
+                                    </div>
+                                </td>
+                                <td class="py-3 px-3 text-right whitespace-nowrap">
+                                    <span class="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-100 text-blue-900 font-mono font-extrabold text-xs border border-blue-200">
+                                        ${groupFeeDisplay}
+                                    </span>
+                                    <div class="text-[10px] font-semibold text-slate-500 mt-1">Combined Rate</div>
+                                </td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+                ` : `<div class="p-8 text-center text-xs font-semibold text-slate-400">${emptyGroupLabel}</div>`}
+            </div>
+        </div>
+    `;
+
+    const contentEl = document.getElementById('conc-group-content');
+    if (contentEl) {
+        if (concGroupActiveView === 'concession') {
+            contentEl.innerHTML = `<div class="grid grid-cols-1 gap-5">${concessionTableHtml}</div>`;
+        } else if (concGroupActiveView === 'group') {
+            contentEl.innerHTML = `<div class="grid grid-cols-1 gap-5">${groupTableHtml}</div>`;
+        } else {
+            contentEl.innerHTML = `<div class="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">${concessionTableHtml}${groupTableHtml}</div>`;
+        }
+    }
 };
 // --- HISTORY RENDER ---
 const updateHistoryStaffFilter = () => {

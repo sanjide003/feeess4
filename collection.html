@@ -178,20 +178,39 @@
                 </div>
             </section>
 
-            <section id="conc-group-page" class="page-content hidden">
-                <div class="card p-5 shadow-sm">
-                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-4 border-b pb-3">
-                        <h2 class="text-xl font-bold text-gray-800">Concession & Group Overview</h2>
-                        <div class="flex gap-2">
-                            <select id="conc-group-year-select" class="p-2.5 rounded-lg border bg-white text-sm font-semibold"></select>
+            <section id="conc-group-page" class="page-content hidden w-full">
+                <div class="card p-4 sm:p-5 shadow-sm bg-white rounded-2xl border border-slate-200">
+                    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 mb-4 border-b border-slate-200 pb-3.5">
+                        <div>
+                            <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 flex items-center gap-2">
+                                <span class="w-8 h-8 rounded-xl bg-blue-600 text-white inline-flex items-center justify-center text-sm shadow-xs"><i class="fas fa-users-viewfinder"></i></span>
+                                <span>Concession & Group Overview</span>
+                            </h2>
+                            <p class="text-xs text-slate-500 font-medium mt-0.5">Complete tabular directory of fee concessions and family/sibling billing groups</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+                            <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200" id="conc-group-view-tabs">
+                                <button type="button" data-conc-view="both" class="conc-view-tab-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-blue-700 shadow-xs transition">Both Tables</button>
+                                <button type="button" data-conc-view="concession" class="conc-view-tab-btn px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition">Concessions</button>
+                                <button type="button" data-conc-view="group" class="conc-view-tab-btn px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition">Groups</button>
+                            </div>
+                            <select id="conc-group-class-select" class="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 outline-none focus:border-blue-500 cursor-pointer">
+                                <option value="">All Classes</option>
+                            </select>
+                            <select id="conc-group-year-select" class="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 outline-none focus:border-blue-500 cursor-pointer"></select>
                         </div>
                     </div>
+
                     <div class="mb-4 relative">
-                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                        <input type="text" id="conc-group-search-input" class="w-full p-3 pl-10 border rounded-lg shadow-sm bg-gray-50" placeholder="Search concession or group by student name, admission number, class, or amount...">
+                        <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                        <input type="text" id="conc-group-search-input" class="w-full py-2.5 pl-9 pr-9 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:border-blue-500 outline-none transition" placeholder="Search by student name, admission no, guardian, class, or fee amount...">
+                        <button type="button" id="conc-group-search-clear" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-600 text-xs items-center justify-center transition" title="Clear search">
+                            <i class="fas fa-times text-[10px]"></i>
+                        </button>
                     </div>
-                    <div id="conc-group-summary" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4"></div>
-                    <div id="conc-group-content" class="space-y-4"></div>
+
+                    <div id="conc-group-summary" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4"></div>
+                    <div id="conc-group-content" class="space-y-5"></div>
                 </div>
             </section>
 

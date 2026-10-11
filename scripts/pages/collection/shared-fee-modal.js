@@ -549,10 +549,24 @@ export const submitFeeEntryPayment = async () => {
 
         const batch = writeBatch(db);
         const currentUser = auth.currentUser;
-        const collectorEmail = currentUser?.email ||
-            window.AppSession?.getStaffAccess?.()?.userKey ||
-            window.AppSession?.getStaffAccess?.()?.loginId ||
-            'admin@institution.edu';
+        const collectorKey = (typeof window.getCollectorKey === 'function' ? window.getCollectorKey() : '') ||
+            String(currentUser?.email || window.AppSession?.getStaffEmail?.() || window.AppSession?.getStaffAccess?.()?.userKey || window.AppSession?.getStaffAccess?.()?.loginId || 'admin@institution.edu').trim().toLowerCase();
+        const collectorDisplayName = (typeof window.getCollectorDisplayName === 'function' ? window.getCollectorDisplayName() : '') ||
+            window.AppSession?.getStaffAccess?.()?.name ||
+            window.AppSession?.getStaffAccess?.()?.staffName ||
+            collectorKey;
+
+        const resolveCanonicalItem = (rawKey, rawMonth, fallbackName, fallbackType = 'month') => {
+            if (typeof window.resolveCanonicalFeeItemKey === 'function') {
+                return window.resolveCanonicalFeeItemKey(rawKey, rawMonth);
+            }
+            const k = String(rawKey || rawMonth || 'fee').trim().toLowerCase();
+            return {
+                key: k,
+                name: fallbackName || (rawMonth ? `${rawMonth} Tuition Fee` : 'Tuition Fee'),
+                type: fallbackType || 'month'
+            };
+        };
 
         const isBulkAdd = activeModalOptions?.mode === 'bulk-add' && Array.isArray(activeModalOptions?.bulkItems);
         const isBulkEdit = activeModalOptions?.mode === 'bulk-edit' && Array.isArray(activeModalOptions?.bulkItems);
@@ -575,9 +589,11 @@ export const submitFeeEntryPayment = async () => {
                 if (isBulkEdit && (bItem.payment?.id || bItem.paymentId)) {
                     const pId = bItem.payment?.id || bItem.paymentId;
                     const payRef = doc(db, `${BASE_PATH}/payments`, pId);
+                    const finalAmt = itemAmt > 0 ? itemAmt : Number(bItem.payment?.amount || 200);
                     const updatePayload = {
-                        amount: itemAmt > 0 ? itemAmt : Number(bItem.payment?.amount || 200),
-                        receiptNo: receiptNo || '',
+                        amount: finalAmt,
+                        groupPaidAmount: finalAmt,
+                        receiptNo: receiptNo,
                         paymentDate: paymentDate,
                         paymentMode: mode,
                         updatedAt: new Date().toISOString()
@@ -595,8 +611,8 @@ export const submitFeeEntryPayment = async () => {
                     savedPaymentRecords.push({ record: rec, cell: bItem.targetCellElement });
                 } else if (isBulkAdd) {
                     const payRef = doc(collection(db, `${BASE_PATH}/payments`));
-                    const bKey = String(bItem.itemKey || bItem.month || 'fee').toLowerCase();
-                    const bName = bItem.itemName || (bItem.month ? `${bItem.month} Tuition Fee` : 'Tuition Fee');
+                    const canonicalItem = resolveCanonicalItem(bItem.itemKey, bItem.month, bItem.itemName, bItem.itemType || 'month');
+                    const finalAmt = itemAmt > 0 ? itemAmt : Number(bItem.amount || 200);
                     const paymentPayload = {
                         studentId: bItem.studentId,
                         studentName: bItem.studentName || 'Student',
@@ -604,16 +620,18 @@ export const submitFeeEntryPayment = async () => {
                         classLabel: bItem.studentClass || '-',
                         studentAdm: bItem.studentAdm || '',
                         guardianName: bItem.guardian || '',
-                        amount: itemAmt > 0 ? itemAmt : Number(bItem.amount || 200),
-                        receiptNo: receiptNo || '',
-                        itemKey: bKey,
-                        itemName: bName,
-                        itemType: bItem.itemType || 'month',
+                        amount: finalAmt,
+                        groupPaidAmount: finalAmt,
+                        receiptNo: receiptNo,
+                        itemKey: canonicalItem.key,
+                        itemName: canonicalItem.name || bItem.itemName || (bItem.month ? `${bItem.month} Tuition Fee` : 'Tuition Fee'),
+                        itemType: canonicalItem.type || bItem.itemType || 'month',
                         paymentMode: mode,
                         paymentDate: paymentDate,
                         timestamp: Date.now(),
                         transactionId: sharedTxnId,
-                        collectedBy: collectorEmail,
+                        collectedBy: collectorKey,
+                        collectedByName: collectorDisplayName,
                         academicYear: itemAcademicYear,
                         status: 'FULL'
                     };
@@ -634,7 +652,8 @@ export const submitFeeEntryPayment = async () => {
             const updatePayload = {
                 studentId: studentId,
                 amount: amount,
-                receiptNo: receiptNo || '',
+                groupPaidAmount: amount,
+                receiptNo: receiptNo,
                 paymentDate: paymentDate,
                 paymentMode: mode,
                 updatedAt: new Date().toISOString()
@@ -646,8 +665,9 @@ export const submitFeeEntryPayment = async () => {
             }
 
             savedPaymentRecord = {
+                ...(activeModalOptions?.payment || {}),
                 id: existingPaymentId,
-                transactionId: existingTxnId,
+                transactionId: existingTxnId || activeModalOptions?.payment?.transactionId || existingPaymentId,
                 studentId: studentId,
                 studentName: studentName,
                 studentClass: studentClass,
@@ -656,6 +676,8 @@ export const submitFeeEntryPayment = async () => {
                 itemKey: itemKey,
                 itemName: itemName,
                 academicYear: academicYear,
+                collectedBy: activeModalOptions?.payment?.collectedBy || collectorKey,
+                collectedByName: activeModalOptions?.payment?.collectedByName || collectorDisplayName,
                 ...updatePayload
             };
             savedPaymentRecords.push({ record: savedPaymentRecord, cell: activeModalOptions?.targetCellElement });
@@ -675,73 +697,111 @@ export const submitFeeEntryPayment = async () => {
                 return;
             }
 
-            const payRef = doc(collection(db, `${BASE_PATH}/payments`));
+            const canonicalItem = resolveCanonicalItem(itemKey, month, itemName, 'month');
             const newTxnId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
 
-            let effectiveStudentId = studentId;
-            let effectiveStudentName = studentName;
-            let effectiveStudentClass = studentClass;
-            let effectiveStudentAdm = studentAdm;
-            let effectiveItemName = itemName;
-            let billingGroupId = null;
+            if (isGroup && checkedStudentCbs.length > 1) {
+                // Record a group-linked payment per selected student (exact same structure as Fee Entry tab)
+                const billingGroupId = unit.groupId || null;
+                const splitStudents = checkedStudentCbs.map(cb => ({
+                    id: cb.dataset.studentId || studentId,
+                    name: cb.dataset.studentName || studentName,
+                    class: cb.dataset.studentClass || studentClass,
+                    adm: cb.dataset.studentAdm || studentAdm
+                }));
 
-            if (isGroup) {
-                if (checkedStudentCbs.length === 1) {
-                    // Single child selected from group
+                splitStudents.forEach((stu, idx) => {
+                    const payRef = doc(collection(db, `${BASE_PATH}/payments`));
+                    const paymentPayload = {
+                        studentId: stu.id,
+                        studentName: stu.name,
+                        studentClass: stu.class,
+                        classLabel: stu.class,
+                        studentAdm: stu.adm,
+                        guardianName: unit?.guardian || document.getElementById('ledger-pay-guardian')?.textContent || '',
+                        amount: amount,
+                        groupPaidAmount: amount,
+                        groupCoveredAmount: amount,
+                        receiptNo: receiptNo,
+                        itemKey: canonicalItem.key,
+                        itemName: canonicalItem.name || itemName,
+                        itemType: canonicalItem.type || 'month',
+                        paymentMode: mode,
+                        paymentDate: paymentDate,
+                        timestamp: Date.now(),
+                        transactionId: newTxnId,
+                        collectedBy: collectorKey,
+                        collectedByName: collectorDisplayName,
+                        academicYear: academicYear,
+                        status: 'FULL'
+                    };
+                    if (billingGroupId) {
+                        paymentPayload.billingGroupId = billingGroupId;
+                    }
+                    batch.set(payRef, paymentPayload);
+                    batch.set(doc(db, `${BASE_PATH}/years/${academicYear}/payments`, payRef.id), paymentPayload);
+                    batch.set(doc(db, `${BASE_PATH}/academicYears/${cleanYear}/payments`, payRef.id), paymentPayload);
+                    const rec = { id: payRef.id, ...paymentPayload };
+                    savedPaymentRecords.push({
+                        record: rec,
+                        cell: idx === 0 ? activeModalOptions?.targetCellElement : null
+                    });
+                });
+                savedPaymentRecord = savedPaymentRecords[0]?.record || null;
+            } else {
+                const payRef = doc(collection(db, `${BASE_PATH}/payments`));
+                let effectiveStudentId = studentId;
+                let effectiveStudentName = studentName;
+                let effectiveStudentClass = studentClass;
+                let effectiveStudentAdm = studentAdm;
+                let billingGroupId = null;
+
+                if (isGroup && checkedStudentCbs.length === 1) {
                     const singleCb = checkedStudentCbs[0];
                     effectiveStudentId = singleCb.dataset.studentId || studentId;
                     effectiveStudentName = singleCb.dataset.studentName || studentName;
                     effectiveStudentClass = singleCb.dataset.studentClass || studentClass;
                     effectiveStudentAdm = singleCb.dataset.studentAdm || studentAdm;
-                    effectiveItemName = `${month} Tuition Fee`;
                     billingGroupId = unit.groupId || null;
-                } else {
-                    // Multiple or all children selected
-                    billingGroupId = unit.groupId || null;
-                    effectiveStudentName = checkedStudentCbs.map(cb => cb.dataset.studentName).join(', ');
-                    effectiveStudentClass = checkedStudentCbs.map(cb => cb.dataset.studentClass).join(', ');
-                    effectiveStudentId = checkedStudentCbs[0].dataset.studentId || studentId;
-                    effectiveStudentAdm = checkedStudentCbs.map(cb => cb.dataset.studentAdm).filter(Boolean).join(', ');
-                    effectiveItemName = checkedStudentCbs.length === unit.students.length
-                        ? `${month} Tuition Fee (Family Group)`
-                        : `${month} Tuition Fee (${checkedStudentCbs.length} Students)`;
                 }
+
+                const paymentPayload = {
+                    studentId: effectiveStudentId,
+                    studentName: effectiveStudentName,
+                    studentClass: effectiveStudentClass,
+                    classLabel: effectiveStudentClass,
+                    studentAdm: effectiveStudentAdm,
+                    guardianName: unit?.guardian || document.getElementById('ledger-pay-guardian')?.textContent || '',
+                    amount: amount,
+                    groupPaidAmount: amount,
+                    receiptNo: receiptNo,
+                    itemKey: canonicalItem.key,
+                    itemName: canonicalItem.name || itemName,
+                    itemType: canonicalItem.type || 'month',
+                    paymentMode: mode,
+                    paymentDate: paymentDate,
+                    timestamp: Date.now(),
+                    transactionId: newTxnId,
+                    collectedBy: collectorKey,
+                    collectedByName: collectorDisplayName,
+                    academicYear: academicYear,
+                    status: 'FULL'
+                };
+
+                if (billingGroupId) {
+                    paymentPayload.billingGroupId = billingGroupId;
+                }
+
+                batch.set(payRef, paymentPayload);
+                batch.set(doc(db, `${BASE_PATH}/years/${academicYear}/payments`, payRef.id), paymentPayload);
+                batch.set(doc(db, `${BASE_PATH}/academicYears/${cleanYear}/payments`, payRef.id), paymentPayload);
+
+                savedPaymentRecord = {
+                    id: payRef.id,
+                    ...paymentPayload
+                };
+                savedPaymentRecords.push({ record: savedPaymentRecord, cell: activeModalOptions?.targetCellElement });
             }
-
-            let paymentPayload = {
-                studentId: effectiveStudentId,
-                studentName: effectiveStudentName,
-                studentClass: effectiveStudentClass,
-                classLabel: effectiveStudentClass,
-                studentAdm: effectiveStudentAdm,
-                guardianName: unit?.guardian || document.getElementById('ledger-pay-guardian')?.textContent || '',
-                amount: amount,
-                receiptNo: receiptNo || '',
-                itemKey: itemKey,
-                itemName: effectiveItemName,
-                itemType: 'month',
-                paymentMode: mode,
-                paymentDate: paymentDate,
-                timestamp: Date.now(),
-                transactionId: newTxnId,
-                collectedBy: collectorEmail,
-                academicYear: academicYear,
-                status: 'FULL'
-            };
-
-            if (billingGroupId) {
-                paymentPayload.billingGroupId = billingGroupId;
-            }
-
-            batch.set(payRef, paymentPayload);
-            batch.set(doc(db, `${BASE_PATH}/years/${academicYear}/payments`, payRef.id), paymentPayload);
-            batch.set(doc(db, `${BASE_PATH}/academicYears/${cleanYear}/payments`, payRef.id), paymentPayload);
-
-            savedPaymentRecord = {
-                id: payRef.id,
-                ...paymentPayload
-            };
-            savedPaymentRecords.push({ record: savedPaymentRecord, cell: activeModalOptions?.targetCellElement });
         }
 
         // Commit to Firestore directly
@@ -787,7 +847,7 @@ export const submitFeeEntryPayment = async () => {
             activeModalOptions.onUpdated(isBulk ? savedPaymentRecords.map(r => r.record) : savedPaymentRecord);
         }
 
-        // 5. Background sync for active tabs without full page reload
+        // 5. Background sync for active tabs, History, Monthly Report, and Dashboard without full page reload
         setTimeout(() => {
             if (typeof window.syncMasterLedgerState === 'function') {
                 window.syncMasterLedgerState();
@@ -801,7 +861,17 @@ export const submitFeeEntryPayment = async () => {
             if (typeof window.prepareHistoryData === 'function') {
                 window.prepareHistoryData();
             }
-        }, 100);
+            if (typeof window.updateDashboardMetrics === 'function') {
+                window.updateDashboardMetrics();
+            }
+            if (typeof window.renderMonthlyCollectedPage === 'function') {
+                const searchVal = document.getElementById('monthly-collected-search-input')?.value || '';
+                window.renderMonthlyCollectedPage(searchVal);
+            }
+            if (typeof window.renderCollectorWiseMonthlyPage === 'function') {
+                window.renderCollectorWiseMonthlyPage();
+            }
+        }, 80);
 
         closeFeeEntryEditModal();
     } catch (err) {

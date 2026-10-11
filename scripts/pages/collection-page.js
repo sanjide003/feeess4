@@ -186,6 +186,7 @@ const syncMasterLedgerState = () => {
         console.warn('Sync master ledger error:', err);
     }
 };
+window.syncMasterLedgerState = syncMasterLedgerState;
 
 const activateTab = (targetId, { updateHash = true } = {}) => {
     const safeTargetId = document.getElementById(targetId) ? targetId : defaultTabId;
@@ -287,6 +288,15 @@ const setResultPageNavVisibility = (canAccess = false) => {
 const normalizeEmail = (email = '') => String(email || '').trim().toLowerCase();
 const getEffectiveStaffEmail = () => normalizeEmail(currentUserEmail || window.AppSession?.getStaffEmail?.() || auth.currentUser?.email || '');
 const getCollectorKey = () => normalizeEmail(currentCollectorKey || window.AppSession?.getStaffAccess?.()?.userKey || window.AppSession?.getStaffAccess?.()?.loginId || getEffectiveStaffEmail());
+const getCollectorDisplayName = () => {
+    if (isCurrentAdmin) return 'Administrator';
+    const key = getCollectorKey();
+    const staffMatch = allStaff.find(s => normalizeEmail(s.email) === key || String(s.loginId || '').trim().toLowerCase() === key);
+    if (staffMatch?.name) return staffMatch.name;
+    return window.AppSession?.getStaffName?.() || currentUserEmail || key || 'Collector';
+};
+window.getCollectorKey = getCollectorKey;
+window.getCollectorDisplayName = getCollectorDisplayName;
 const getDutyUserKey = () => getCollectorKey();
 const getDutyStorageKey = () => `collector_duty_classes_${getDutyUserKey()}`;
 const getDutyPaymentStorageKey = () => `collector_duty_payment_${getDutyUserKey()}`;
@@ -326,11 +336,14 @@ const getDirectoryValue = (entry = {}, keys = []) => {
 const normalizeFeeItemName = (name = '') => String(name || '').replace(/\s*\((?:\d{4}\s*-\s*\d{2,4}|\d{4}\s*-\s*\d{4})\)\s*$/i, '').trim();
 const getPaymentItemType = (payment = {}) => {
     if (payment.entryType === 'donation' || payment.itemKey === STUDENT_DONATION_ITEM_KEY) return 'donation';
+    if (payment.itemType === 'month') return 'month';
+    if (payment.itemType === 'custom') return 'custom';
     const feeItem = feeItems.find((item) => item.key === payment.itemKey);
     if (feeItem?.type === 'month') return 'month';
     if (feeItem?.type === 'custom') return 'custom';
-    const key = String(payment.itemKey || '').toLowerCase();
-    if (key.startsWith('month-') || key.includes('-month-')) return 'month';
+    const key = String(payment.itemKey || '').trim().toLowerCase();
+    if (key.startsWith('month-') || key.startsWith('month_') || key.includes('-month-')) return 'month';
+    if (MONTH_SEQUENCE.some(m => key === m || key === m.slice(0, 3) || key.startsWith(m))) return 'month';
     return 'custom';
 };
 const getDutyPaymentDetails = () => ({
@@ -627,18 +640,74 @@ const getStaffName = (email, savedName) => {
     return email;
 };
 
+const isSameCollectorRecord = (recordCollector = '') => {
+    const myKey = getCollectorKey();
+    const myEmail = getEffectiveStaffEmail();
+    const rec = normalizeEmail(recordCollector);
+    if (!rec) return false;
+    return rec === myKey || (myEmail && rec === myEmail);
+};
+
+const isFeeItemMatch = (paymentItemKey = '', targetItem = {}) => {
+    const pKey = String(paymentItemKey || '').trim().toLowerCase();
+    const tKey = String(targetItem?.key || '').trim().toLowerCase();
+    if (!pKey || !tKey) return false;
+    if (pKey === tKey) return true;
+    if ((targetItem?.type || 'month') === 'month') {
+        const tName = normalizeFeeItemName(targetItem.name || '').toLowerCase();
+        const shortMonth = tName.slice(0, 3);
+        if (shortMonth && (pKey === shortMonth || pKey === tName || pKey === `month_${shortMonth}` || pKey === `month-${shortMonth}`)) {
+            return true;
+        }
+    }
+    return false;
+};
+window.isFeeItemMatch = isFeeItemMatch;
+
+const resolveCanonicalFeeItem = (rawKeyOrMonth = '', academicYear = '') => {
+    const raw = String(rawKeyOrMonth || '').trim().toLowerCase();
+    if (!raw || !Array.isArray(feeItems) || feeItems.length === 0) return null;
+    const yearToMatch = academicYear || selectedFeeAcademicYear || currentWorkingAcademicYear || '';
+
+    // 1. Exact key match in target academic year
+    const exactYearMatch = feeItems.find(i =>
+        String(i.key || '').trim().toLowerCase() === raw &&
+        (!yearToMatch || !i.academicYear || i.academicYear === yearToMatch)
+    );
+    if (exactYearMatch) return exactYearMatch;
+
+    // 2. Exact key match across any year
+    const exactAnyMatch = feeItems.find(i => String(i.key || '').trim().toLowerCase() === raw);
+    if (exactAnyMatch) return exactAnyMatch;
+
+    // 3. Month prefix match (e.g. 'apr' -> 'April (2025-26)')
+    const monthPrefix = raw.replace(/^month[-_]/, '').slice(0, 3);
+    if (monthPrefix.length === 3) {
+        const monthMatch = feeItems.find(i => {
+            if ((i.type || 'month') !== 'month') return false;
+            if (yearToMatch && i.academicYear && i.academicYear !== yearToMatch) return false;
+            const cleanName = normalizeFeeItemName(i.name || '').toLowerCase();
+            const cleanKey = String(i.key || '').toLowerCase();
+            return cleanName.startsWith(monthPrefix) || cleanKey.includes(monthPrefix);
+        });
+        if (monthMatch) return monthMatch;
+    }
+    return null;
+};
+window.resolveCanonicalFeeItem = resolveCanonicalFeeItem;
+
 const getVisiblePayments = () => {
     if(isCurrentAdmin) return allPayments;
     return allPayments.filter((payment) => {
-        if (payment.collectedBy !== getCollectorKey()) return false;
+        if (!isSameCollectorRecord(payment.collectedBy)) return false;
         if (!selectedDutyClasses.length) return true;
-        const paymentClass = payment.classLabel || getStudentById(payment.studentId)?.class || '';
+        const paymentClass = payment.classLabel || payment.studentClass || getStudentById(payment.studentId)?.class || '';
         return selectedDutyClasses.includes(paymentClass);
     });
 };
 const getVisibleDonations = () => isCurrentAdmin
     ? [...allDonations]
-    : allDonations.filter((donation) => donation.collectedBy === getCollectorKey());
+    : allDonations.filter((donation) => isSameCollectorRecord(donation.collectedBy));
 const getAcademicYearFromDate = (dateObj = new Date()) => {
     const month = dateObj.getMonth();
     const year = dateObj.getFullYear();
@@ -2935,7 +3004,7 @@ const renderFeeTable = () => {
                 <td class="p-2.5 font-bold text-slate-900 border-r border-slate-200 sticky left-20 bg-white z-10">${escapeHtml(s.name)}</td>`;
 
             items.forEach(i => {
-                const p = allPayments.find(pay => pay.studentId === s.id && pay.itemKey === i.key);
+                const p = allPayments.find(pay => pay.studentId === s.id && isFeeItemMatch(pay.itemKey, i));
                 const selKey = `${s.id}__${i.key}`;
                 const isSelected = selectedFeeStatusCells.has(selKey);
                 const selRing = isSelected ? 'ring-2 ring-blue-500 ring-inset bg-blue-50/70' : '';
@@ -3420,8 +3489,8 @@ const prepareHistoryData = () => {
         historyLoadTimer = null;
     }
 
-    let myPays = isCurrentAdmin ? [...allPayments] : allPayments.filter((payment) => payment.collectedBy === getCollectorKey());
-    let myDonations = isCurrentAdmin ? [...allDonations] : allDonations.filter((donation) => donation.collectedBy === getCollectorKey());
+    let myPays = isCurrentAdmin ? [...allPayments] : allPayments.filter((payment) => isSameCollectorRecord(payment.collectedBy));
+    let myDonations = isCurrentAdmin ? [...allDonations] : allDonations.filter((donation) => isSameCollectorRecord(donation.collectedBy));
 
     if (isCurrentAdmin) {
         const staffFilter = document.getElementById('history-staff-filter').value;
@@ -3811,8 +3880,7 @@ const renderCollectorWiseMonthlyPage = () => {
             }
             if (payment.entryType === 'donation') acc[collectorKey].monthlyOthersTotal += Number(payment.amount || 0);
             else {
-                const feeItem = feeItems.find((item) => item.key === payment.itemKey);
-                if ((feeItem?.type || 'month') === 'month') acc[collectorKey].monthlyDefaultTotal += Number(payment.amount || 0);
+                if (getPaymentItemType(payment) === 'month') acc[collectorKey].monthlyDefaultTotal += Number(payment.amount || 0);
                 else acc[collectorKey].monthlyOthersTotal += Number(payment.amount || 0);
             }
             return acc;
@@ -3851,6 +3919,11 @@ const renderCollectorWiseMonthlyPage = () => {
         `;
     }).join('');
 };
+
+window.prepareHistoryData = prepareHistoryData;
+window.updateDashboardMetrics = updateDashboardMetrics;
+window.renderMonthlyCollectedPage = renderMonthlyCollectedPage;
+window.renderCollectorWiseMonthlyPage = renderCollectorWiseMonthlyPage;
 
 // --- STUDENTS INFO RENDER ---
 const renderStudentInfoList = () => {

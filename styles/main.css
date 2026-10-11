@@ -747,7 +747,8 @@ header { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); pos
     font-weight: 700;
 }
 .notice-modal-box { max-width: 560px; text-align: left; padding-top: 30px; }
-.notice-modal-body { font-size: 14px; line-height: 1.7; color: #334155; max-height: 55vh; overflow-y: auto; white-space: normal; word-break: break-word; overflow-wrap: anywhere; text-indent: 1.5em; }
+.notice-modal-body { font-size: 14px; line-height: 1.7; color: #334155; max-height: 68vh; overflow-y: auto; white-space: normal; word-break: break-word; overflow-wrap: anywhere; }
+.notice-modal-text { text-indent: 1.5em; }
 .notice-modal-body a { color: #1d4ed8; text-decoration: underline; }
 
 .scroll-wrapper { overflow-x: auto; padding-bottom: 20px; display: flex; gap: 15px; scroll-snap-type: x mandatory; padding-top: 10px; }

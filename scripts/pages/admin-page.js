@@ -1422,6 +1422,7 @@ const initAllAdminPhotoWidgets = () => {
     setupAdminPhotoWidget('e-stu-photo', 'e-stu-photo-preview', 'e-stu-photo-placeholder', 'e-stu-remove-btn', 'e-stu-file-input', 'e-stu-camera-btn', 'e-stu-upload-btn');
     initBasicInfoLogoWidget();
     initGalleryUploadControls();
+    initNoticeUploadControls();
 
     const noticeDtInput = document.getElementById('new-notice-dt');
     if (noticeDtInput && !noticeDtInput.value) {
@@ -4244,14 +4245,44 @@ document.getElementById('save-web-info-btn').addEventListener('click', async () 
 // --- 9 & 10. NOTICES & GALLERY ---
 const updateWebContent = async () => { await setDoc(doc(db, `${BASE_PATH}/settings`, 'content'), webContent, {merge: true}); }
 const expandedNoticeIndexes = new Set();
+
+const renderAdminNoticeTextWithLinks = (rawText = '', linkLabelLength = 35) => {
+    const text = String(rawText || '');
+    if (!text) return '';
+    const urlPattern = /(https?:\/\/[^\s]+)/gi;
+    let cursor = 0;
+    let html = '';
+    text.replace(urlPattern, (url, _unused, offset) => {
+        const leading = text.slice(cursor, offset);
+        html += escapeHtml(leading);
+        const safeHref = sanitizeUrl(url, ['https:', 'http:']);
+        if (safeHref) {
+            const shortLabel = url.length > linkLabelLength
+                ? `${url.slice(0, linkLabelLength)}...`
+                : url;
+            html += `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline font-semibold break-all">${escapeHtml(shortLabel)}</a>`;
+        } else {
+            html += escapeHtml(url);
+        }
+        cursor = offset + url.length;
+        return url;
+    });
+    html += escapeHtml(text.slice(cursor));
+    return html.replace(/\n/g, '<br>');
+};
+
 const normalizeNoticePayload = (notice = {}, previous = {}) => {
     const now = Date.now();
     const wasPinned = previous.pinned === true;
     const isPinned = notice.pinned === true;
+    const rawImage = notice.image !== undefined
+        ? String(notice.image || '').trim()
+        : String(notice.imageUrl || previous.image || previous.imageUrl || '').trim();
     return {
         id: previous.id || notice.id || `notice-${now}-${Math.random().toString(36).slice(2, 8)}`,
         heading: String(notice.heading || '').trim(),
         text: String(notice.text || '').trim(),
+        image: rawImage,
         date: String(notice.date || '').trim(),
         pinned: isPinned,
         createdAt: previous.createdAt || notice.createdAt || now,
@@ -4259,21 +4290,90 @@ const normalizeNoticePayload = (notice = {}, previous = {}) => {
         pinnedAt: isPinned ? (wasPinned ? (previous.pinnedAt || notice.pinnedAt || now) : now) : ''
     };
 };
+
+const updateNoticeImagePreviewUI = (prefix, imageSrc = '') => {
+    const preview = document.getElementById(`${prefix}-img-preview`);
+    const placeholder = document.getElementById(`${prefix}-img-placeholder`);
+    const clearBtn = document.getElementById(`${prefix}-img-clear-btn`);
+    const fileInput = document.getElementById(`${prefix}-img-file`);
+    const dataInput = document.getElementById(`${prefix}-img-data`);
+    const cleanSrc = String(imageSrc || '').trim();
+
+    if (dataInput) dataInput.value = cleanSrc;
+    if (fileInput && !cleanSrc) fileInput.value = '';
+    if (cleanSrc) {
+        if (preview) {
+            preview.src = cleanSrc;
+            preview.classList.remove('hidden');
+        }
+        if (placeholder) placeholder.classList.add('hidden');
+        if (clearBtn) clearBtn.classList.remove('hidden');
+    } else {
+        if (preview) {
+            preview.src = '';
+            preview.classList.add('hidden');
+        }
+        if (placeholder) placeholder.classList.remove('hidden');
+        if (clearBtn) clearBtn.classList.add('hidden');
+    }
+};
+
+const initNoticeUploadControls = () => {
+    const bindNoticeUploader = (prefix) => {
+        const uploadBtn = document.getElementById(`${prefix}-img-upload-btn`);
+        const fileInput = document.getElementById(`${prefix}-img-file`);
+        const clearBtn = document.getElementById(`${prefix}-img-clear-btn`);
+        if (!uploadBtn || !fileInput) return;
+
+        uploadBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const originalLabel = uploadBtn.innerHTML;
+            try {
+                uploadBtn.disabled = true;
+                uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Compressing...';
+                const base64 = await compressImageFileToBase64(file, 60);
+                updateNoticeImagePreviewUI(prefix, base64);
+            } catch (err) {
+                console.error('Notice image compression failed:', err);
+                alert('ചിത്രം കമ്പ്രസ്സ് ചെയ്യാൻ കഴിഞ്ഞില്ല: ' + (err?.message || 'Error'));
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.innerHTML = originalLabel;
+                fileInput.value = '';
+            }
+        });
+
+        clearBtn?.addEventListener('click', () => {
+            updateNoticeImagePreviewUI(prefix, '');
+        });
+    };
+
+    bindNoticeUploader('new-notice');
+    bindNoticeUploader('e-not');
+};
+
 const renderWebNotices = () => {
     const list = document.getElementById('web-notices-list');
     list.innerHTML = webContent.notices.length === 0
         ? '<p class="text-sm italic text-gray-500 p-2">No active notices.</p>'
         : webContent.notices.map((notice, i) => {
             const n = normalizeNoticePayload(notice);
+            const safeImg = (n.image && n.image.startsWith('data:image/')) ? n.image : sanitizeUrl(n.image);
+            const hasHeading = Boolean(n.heading);
+            const hasText = Boolean(n.text);
             return `
             <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 p-4 bg-white border border-gray-200 rounded-xl shadow-sm text-sm transition hover:shadow-md">
-                <div class="text-gray-800 font-medium min-w-0 w-full break-words whitespace-pre-wrap">
+                <div class="text-gray-800 font-medium min-w-0 w-full break-words">
                     <div class="flex flex-wrap items-center gap-2 mb-2">
-                        <span class="inline-flex bg-blue-100 text-blue-800 px-3 py-1 rounded-lg font-bold font-mono">${escapeHtml(n.date || '--')}</span>
+                        <span class="inline-flex bg-blue-100 text-blue-800 px-3 py-1 rounded-lg font-bold font-mono text-xs">${escapeHtml(n.date || '--')}</span>
                         ${n.pinned ? '<span class="inline-flex bg-amber-100 text-amber-700 px-2 py-1 rounded-lg font-bold text-xs"><i class="fas fa-thumbtack mr-1"></i>Pinned</span>' : ''}
+                        ${safeImg ? '<span class="inline-flex bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-lg font-bold text-xs"><i class="fas fa-image mr-1"></i>Image Notice</span>' : ''}
                     </div>
-                    <div class="font-extrabold text-gray-900 mb-1">${escapeHtml(n.heading || 'Notice')}</div>
-                    <div class="break-words ${expandedNoticeIndexes.has(i) ? '' : 'overflow-hidden'}" style="${expandedNoticeIndexes.has(i) ? '' : 'max-height: 6em;'}">${escapeHtml(n.text || '')}</div>
+                    ${hasHeading ? `<div class="font-extrabold text-gray-900 mb-1.5 text-base">${escapeHtml(n.heading)}</div>` : (!hasText && safeImg ? `<div class="text-xs font-bold text-slate-400 italic mb-1.5">Image-only Notice</div>` : '')}
+                    ${safeImg ? `<div class="my-2"><img src="${safeImg}" alt="${escapeHtml(n.heading || 'Notice image')}" class="max-h-52 w-auto rounded-lg border border-slate-200 object-contain bg-slate-50 shadow-xs"></div>` : ''}
+                    ${hasText ? `<div class="break-words leading-relaxed text-slate-700 ${expandedNoticeIndexes.has(i) ? '' : 'overflow-hidden'}" style="${expandedNoticeIndexes.has(i) ? '' : 'max-height: 6em;'}">${renderAdminNoticeTextWithLinks(n.text, 35)}</div>` : ''}
                     ${(n.text || '').length > 160 ? `<button class="text-xs font-bold text-blue-700 mt-2 notice-toggle-btn" data-index="${i}">${expandedNoticeIndexes.has(i) ? 'Collapse' : 'Expand'}</button>` : ''}
                 </div>
                 <div class="flex items-center shrink-0">
@@ -4292,16 +4392,22 @@ document.getElementById('add-notice-btn').onclick = () => {
     if(!requirePermission('website.manage')) return;
     const heading = document.getElementById('new-notice-head').value.trim();
     const txt = document.getElementById('new-notice-txt').value.trim();
+    const image = document.getElementById('new-notice-img-data')?.value?.trim() || '';
     const dt = document.getElementById('new-notice-dt').value || new Date().toISOString().split('T')[0];
     const pinned = document.getElementById('new-notice-pin').checked;
-    if(heading && txt && dt) {
+    if (!heading && !txt && !image) {
+        alert("ദയവായി ഹെഡിംഗ്, വിവരണം (Description), അല്ലെങ്കിൽ ചിത്രം (Image) എന്നിവയിൽ ഏതെങ്കിലും ഒന്ന് നൽകുക.");
+        return;
+    }
+    if(dt) {
         if(!confirm("പുതിയ അറിയിപ്പ് പ്രസിദ്ധീകരിക്കട്ടെ?")) return;
         expandedNoticeIndexes.clear();
-        webContent.notices.push(normalizeNoticePayload({ heading, text: txt, date: dt, pinned }));
+        webContent.notices.push(normalizeNoticePayload({ heading, text: txt, image, date: dt, pinned }));
         updateWebContent();
         logAuditEvent({ category: 'website', action: 'notice.create', entityType: 'notice', message: 'Website notice published.' });
         document.getElementById('new-notice-head').value = '';
         document.getElementById('new-notice-txt').value = '';
+        updateNoticeImagePreviewUI('new-notice', '');
         document.getElementById('new-notice-pin').checked = false;
         document.getElementById('new-notice-dt').value = new Date().toISOString().split('T')[0];
     }
@@ -4312,25 +4418,35 @@ window.editNotice = (idx) => {
     const n = normalizeNoticePayload(webContent.notices[idx] || {}); document.getElementById('e-not-idx').value = idx;
     document.getElementById('e-not-head').value = n.heading;
     document.getElementById('e-not-txt').value = n.text;
-    document.getElementById('e-not-dt').value = n.date;
+    document.getElementById('e-not-dt').value = n.date || new Date().toISOString().split('T')[0];
     document.getElementById('e-not-pin').checked = n.pinned;
+    updateNoticeImagePreviewUI('e-not', n.image || '');
     document.getElementById('edit-notice-popup').classList.remove('hidden'); document.getElementById('edit-notice-popup').classList.add('flex');
 };
-document.getElementById('e-not-cancel').onclick = () => document.getElementById('edit-notice-popup').classList.add('hidden');
+document.getElementById('e-not-cancel').onclick = () => {
+    document.getElementById('edit-notice-popup').classList.add('hidden');
+    document.getElementById('edit-notice-popup').classList.remove('flex');
+};
 document.getElementById('e-not-save').onclick = () => {
     if(!requirePermission('website.manage')) return;
     const idx = document.getElementById('e-not-idx').value;
     const heading = document.getElementById('e-not-head').value.trim();
     const txt = document.getElementById('e-not-txt').value.trim();
-    const dt = document.getElementById('e-not-dt').value;
+    const image = document.getElementById('e-not-img-data')?.value?.trim() || '';
+    const dt = document.getElementById('e-not-dt').value || new Date().toISOString().split('T')[0];
     const pinned = document.getElementById('e-not-pin').checked;
-    if(heading && txt && dt) {
+    if (!heading && !txt && !image) {
+        alert("ദയവായി ഹെഡിംഗ്, വിവരണം (Description), അല്ലെങ്കിൽ ചിത്രം (Image) എന്നിവയിൽ ഏതെങ്കിലും ഒന്ന് നൽകുക.");
+        return;
+    }
+    if(dt) {
         if(!confirm("അറിയിപ്പിലെ മാറ്റങ്ങൾ സേവ് ചെയ്യട്ടെ?")) return;
         expandedNoticeIndexes.clear();
-        webContent.notices[idx] = normalizeNoticePayload({ heading, text: txt, date: dt, pinned }, webContent.notices[idx] || {});
+        webContent.notices[idx] = normalizeNoticePayload({ heading, text: txt, image, date: dt, pinned }, webContent.notices[idx] || {});
         updateWebContent();
         logAuditEvent({ category: 'website', action: 'notice.update', entityType: 'notice', entityId: String(idx), message: 'Website notice updated.' });
         document.getElementById('edit-notice-popup').classList.add('hidden');
+        document.getElementById('edit-notice-popup').classList.remove('flex');
     }
 };
 

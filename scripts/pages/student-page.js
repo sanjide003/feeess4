@@ -644,25 +644,57 @@ window.AppSession?.guardStudentPage?.();
             const dateValue = notice.date ? new Date(notice.date).getTime() : 0;
             return Number.isFinite(dateValue) && dateValue > 0 ? dateValue + fallbackIndex : Date.now() - fallbackIndex;
         };
+        const renderNoticeTextWithLinks = (rawText = '', linkLabelLength = 25) => {
+            const text = String(rawText || '');
+            if (!text) return '';
+            const urlPattern = /(https?:\/\/[^\s]+)/gi;
+            let cursor = 0;
+            let html = '';
+            text.replace(urlPattern, (url, _unused, offset) => {
+                const leading = text.slice(cursor, offset);
+                html += escapeHtml(leading);
+                const safeHref = sanitizeUrl(url, ['https:', 'http:']);
+                if (safeHref) {
+                    const shortLabel = url.length > linkLabelLength
+                        ? `${url.slice(0, linkLabelLength)}...`
+                        : url;
+                    html += `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline font-semibold break-all">${escapeHtml(shortLabel)}</a>`;
+                } else {
+                    html += escapeHtml(url);
+                }
+                cursor = offset + url.length;
+                return url;
+            });
+            html += escapeHtml(text.slice(cursor));
+            return html.replace(/\n/g, '<br>');
+        };
+
         const buildPublicNoticeNotifications = () => {
             const alerts = [];
             rawNotices.forEach((notice = {}, idx) => {
-                const heading = notice.heading || notice.title || 'Update';
-                const text = notice.text || notice.content || '';
+                const rawHeading = String(notice.heading || notice.title || '').trim();
+                const text = String(notice.text || notice.content || '').trim();
+                const rawImg = String(notice.image || notice.imageUrl || '').trim();
+                const safeImage = (rawImg && rawImg.startsWith('data:image/')) ? rawImg : sanitizeUrl(rawImg);
                 const dateStr = notice.date || '';
-                const baseKey = notice.id || `${heading}|${dateStr}|${text}`;
+                const baseKey = notice.id || `${rawHeading}|${dateStr}|${text}|${safeImage ? safeImage.slice(-32) : ''}`;
                 const fallbackTs = Number(notice.createdAt || notice.updatedAt || notice.pinnedAt || 0)
                     || (notice.date ? new Date(notice.date).getTime() : 0)
                     || (1704067200000 + (stableNotificationHash(baseKey).split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0) * 1000));
+                const displayHeading = rawHeading || (safeImage && !text ? 'Image Notice' : 'Notice');
+                const summaryMessage = text || (safeImage ? 'Tap to view attached notice image.' : '');
                 alerts.push({
                     id: `notice-new-${stableNotificationHash(baseKey)}`,
                     type: 'notice',
-                    icon: 'fa-bullhorn',
-                    title: `Notice: ${heading}`,
-                    heading,
+                    icon: safeImage && !text ? 'fa-image' : 'fa-bullhorn',
+                    title: rawHeading ? `Notice: ${rawHeading}` : (safeImage ? 'New Image Notice' : 'New Notice'),
+                    heading: rawHeading,
+                    displayHeading,
+                    image: safeImage || '',
                     date: dateStr,
                     pinned: Boolean(notice.pinned),
-                    message: text,
+                    message: summaryMessage,
+                    rawText: text,
                     timestamp: getNoticeTimestamp({ ...notice, createdAt: fallbackTs }, idx, 'createdAt'),
                     target: 'notice-modal'
                 });
@@ -671,11 +703,14 @@ window.AppSession?.guardStudentPage?.();
                         id: `notice-pinned-${stableNotificationHash(baseKey)}-${notice.pinnedAt || 'active'}`,
                         type: 'notice',
                         icon: 'fa-thumbtack',
-                        title: `Pinned Notice: ${heading}`,
-                        heading,
+                        title: rawHeading ? `Pinned Notice: ${rawHeading}` : 'Pinned Notice',
+                        heading: rawHeading,
+                        displayHeading,
+                        image: safeImage || '',
                         date: dateStr,
                         pinned: true,
-                        message: text || 'An important notice has been pinned on the public page.',
+                        message: text || (safeImage ? 'An important image notice has been pinned.' : 'An important notice has been pinned on the public page.'),
+                        rawText: text,
                         timestamp: getNoticeTimestamp({ ...notice, pinnedAt: fallbackTs }, idx, 'pinnedAt'),
                         target: 'notice-modal'
                     });
@@ -823,13 +858,20 @@ window.AppSession?.guardStudentPage?.();
                 const iconClass = n.type === 'sys' ? 'sys' : (n.type === 'fee' ? 'fee' : (n.type === 'result' ? 'result' : 'notice'));
                 const timeAgoStr = n.timestamp ? new Date(n.timestamp).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year: 'numeric' }) : 'Just now';
                 const canClearDueToday = n.type === 'fee' && !n.isRead;
+                const msgHtml = (n.type === 'notice' || n.type === 'sys')
+                    ? renderNoticeTextWithLinks(n.message || '', 25)
+                    : escapeHtml(n.message || '');
+                const thumbHtml = n.image
+                    ? `<div class="mt-1.5 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 max-h-28 flex justify-center"><img src="${n.image}" alt="Notice attachment" class="max-h-28 w-auto object-contain"></div>`
+                    : '';
 
                 listContainer.innerHTML += `
                     <div class="notify-item ${n.isRead ? 'opacity-75' : 'unread'} flex items-start gap-2.5" data-notification-id="${escapeHtml(n.id)}" data-notification-target="${escapeHtml(n.target || '')}" role="button" tabindex="0">
                         <div class="notify-icon ${iconClass}"><i class="fas ${n.icon}"></i></div>
                         <div class="notify-content flex-1 min-w-0">
                             <div class="notify-title">${escapeHtml(n.title)}</div>
-                            <div class="notify-msg line-clamp-2">${escapeHtml(n.message)}</div>
+                            ${n.message ? `<div class="notify-msg line-clamp-2">${msgHtml}</div>` : ''}
+                            ${thumbHtml}
                             <div class="notify-time flex items-center justify-between gap-2 mt-1">
                                 <span><i class="far fa-clock text-[9px]"></i> ${timeAgoStr}</span>
                                 ${canClearDueToday ? `<span class="clear-due-today-btn text-[10px] font-extrabold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-0.5 rounded-md transition" data-clear-due-id="${escapeHtml(n.id)}" title="Clear for today (will remind again tomorrow if unpaid)">Clear Today</span>` : (n.type === 'fee' && n.isRead ? `<span class="text-[10px] font-bold text-slate-400">Cleared for today</span>` : '')}
@@ -863,15 +905,30 @@ window.AppSession?.guardStudentPage?.();
             // If it is a notice or system notification, display full notice content directly inside student dashboard modal
             if (notification && (notification.type === 'notice' || targetStr === 'notice-modal')) {
                 const dateBadge = notification.date
-                    ? `<div class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full mb-3"><i class="far fa-calendar-alt"></i> ${escapeHtml(notification.date)}</div>`
+                    ? `<div class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full mb-2"><i class="far fa-calendar-alt"></i> ${escapeHtml(notification.date)}</div>`
                     : '';
                 const pinnedBadge = notification.pinned
-                    ? `<span class="inline-flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full mb-3 ml-1.5"><i class="fas fa-thumbtack"></i> Pinned</span>`
+                    ? `<span class="inline-flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full mb-2 ml-1.5"><i class="fas fa-thumbtack"></i> Pinned</span>`
                     : '';
+                const hasHeading = Boolean(notification.heading);
+                const rawNoticeText = notification.rawText !== undefined ? notification.rawText : (notification.message || '');
+                const hasText = Boolean(rawNoticeText);
+                const hasImage = Boolean(notification.image);
+                const imageBlock = hasImage
+                    ? `<div class="rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex justify-center p-1"><img src="${notification.image}" alt="${escapeHtml(notification.heading || 'Notice image')}" class="max-h-[62vh] w-auto object-contain rounded-lg"></div>`
+                    : '';
+                const headingBlock = hasHeading
+                    ? `<div class="text-base font-extrabold text-slate-900">${escapeHtml(notification.heading)}</div>`
+                    : '';
+                const textBlock = hasText
+                    ? `<div class="text-sm text-slate-800 leading-relaxed break-words bg-slate-50 p-4 rounded-xl border border-slate-200/80">${renderNoticeTextWithLinks(rawNoticeText, 25)}</div>`
+                    : (!hasImage ? `<div class="text-sm text-slate-500 italic bg-slate-50 p-4 rounded-xl border border-slate-200/80">No additional details.</div>` : '');
                 const bodyHtml = `
                     <div class="space-y-3">
-                        <div>${dateBadge}${pinnedBadge}</div>
-                        <div class="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap break-words bg-slate-50 p-4 rounded-xl border border-slate-200/80">${escapeHtml(notification.message || 'No additional details.')}</div>
+                        ${(dateBadge || pinnedBadge) ? `<div>${dateBadge}${pinnedBadge}</div>` : ''}
+                        ${headingBlock}
+                        ${imageBlock}
+                        ${textBlock}
                         <div class="pt-2 flex justify-end">
                             <a href="index.html#notices" class="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
                                 <i class="fas fa-external-link-alt"></i> View All Public Notices
@@ -879,7 +936,7 @@ window.AppSession?.guardStudentPage?.();
                         </div>
                     </div>
                 `;
-                openStudentDetailModal(notification.heading || notification.title || 'Notice Details', bodyHtml);
+                openStudentDetailModal(notification.heading || notification.displayHeading || notification.title || 'Notice Details', bodyHtml);
                 return;
             }
 
@@ -964,6 +1021,11 @@ window.AppSession?.guardStudentPage?.();
                 event.stopPropagation();
                 const clearId = clearBtn.dataset.clearDueId || '';
                 if (clearId) dismissFeeNotificationForToday([clearId]);
+                return;
+            }
+            const directLink = event.target.closest('a[href]');
+            if (directLink) {
+                event.stopPropagation();
                 return;
             }
             const button = event.target.closest('.notify-item');

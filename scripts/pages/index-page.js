@@ -459,6 +459,7 @@ import { BASE_PATH, applyInstitutionBranding, escapeHtml, hardenExternalLinks, n
         const deriveNoticeHeading = (notice = {}, index = 0) => {
             const directHeading = notice.heading || notice.title;
             if (directHeading && String(directHeading).trim()) return String(directHeading).trim();
+            if (notice.image || notice.imageUrl) return '';
             const baseText = String(notice.text || '').trim();
             if (!baseText) return `Notification ${index + 1}`;
             const firstLine = baseText.split('\n').map((line) => line.trim()).find(Boolean) || '';
@@ -472,14 +473,34 @@ import { BASE_PATH, applyInstitutionBranding, escapeHtml, hardenExternalLinks, n
         const openNoticeModal = (noticeIndex) => {
             const selected = latestNoticeCache[noticeIndex];
             if (!selected || !noticeModal || !noticeModalBody) return;
-            noticeModalTitle.textContent = selected.heading;
+            noticeModalTitle.textContent = selected.heading || 'Notification';
             noticeModalDate.textContent = selected.date ? `Posted: ${selected.date}` : 'Posted date unavailable';
-            noticeModalBody.innerHTML = renderNoticeTextWithLinks(selected.text, 25);
+            const imgHtml = selected.image
+                ? `<div class="mb-3 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex justify-center"><img src="${selected.image}" alt="${escapeHtml(selected.heading || 'Notice image')}" class="max-h-[60vh] w-auto object-contain cursor-pointer notice-modal-img" data-notice-img-url="${escapeHtml(selected.image)}"></div>`
+                : '';
+            const textHtml = selected.text
+                ? `<div class="notice-modal-text">${renderNoticeTextWithLinks(selected.text, 25)}</div>`
+                : '';
+            noticeModalBody.innerHTML = `${imgHtml}${textHtml}`;
             noticeModal.style.display = 'flex';
             noticeModal.setAttribute('aria-hidden', 'false');
         };
 
+        noticeModalBody?.addEventListener('click', (event) => {
+            const imgEl = event.target.closest('[data-notice-img-url]');
+            if (!imgEl) return;
+            openImageModal(imgEl.dataset.noticeImgUrl, -1);
+        });
+
         noticeListEl?.addEventListener('click', (event) => {
+            const imgBtn = event.target.closest('[data-notice-card-img]');
+            if (imgBtn) {
+                const noticeIndex = Number(imgBtn.dataset.noticeIndex);
+                if (!Number.isNaN(noticeIndex)) {
+                    openNoticeModal(noticeIndex);
+                }
+                return;
+            }
             const expandButton = event.target.closest('.notice-expand-btn');
             if (!expandButton) return;
             const noticeIndex = Number(expandButton.dataset.noticeIndex);
@@ -565,10 +586,13 @@ import { BASE_PATH, applyInstitutionBranding, escapeHtml, hardenExternalLinks, n
                                 .map((entry) => entry.notice);
 
                             latestNoticeCache = sortedNotices.map((notice, index) => {
-                                const text = String(notice?.text || '');
+                                const text = String(notice?.text || '').trim();
+                                const rawImg = String(notice?.image || notice?.imageUrl || '').trim();
+                                const safeImage = (rawImg && rawImg.startsWith('data:image/')) ? rawImg : sanitizeUrl(rawImg);
                                 return {
                                     heading: deriveNoticeHeading(notice, index),
                                     text,
+                                    image: safeImage || '',
                                     date: String(notice?.date || ''),
                                     pinned: notice?.pinned === true
                                 };
@@ -576,18 +600,25 @@ import { BASE_PATH, applyInstitutionBranding, escapeHtml, hardenExternalLinks, n
 
                             noticeListEl.innerHTML = latestNoticeCache.map((notice, index) => {
                                 const longNotice = isNoticeLong(notice.text);
+                                const hasHeading = Boolean(notice.heading);
+                                const hasText = Boolean(notice.text);
+                                const hasImage = Boolean(notice.image);
                                 return `
                                 <article class="notice-card">
-                                    <h4 class="notice-title">${notice.pinned ? '<i class="fas fa-thumbtack text-amber-500 mr-1" title="Pinned"></i>' : ''}${escapeHtml(notice.heading)}</h4>
-                                    <p class="notice-body ${longNotice ? 'notice-preview-clamp' : ''}">${renderNoticeTextWithLinks(notice.text, 25)}</p>
+                                    ${hasHeading ? `<h4 class="notice-title">${notice.pinned ? '<i class="fas fa-thumbtack text-amber-500 mr-1" title="Pinned"></i>' : ''}${escapeHtml(notice.heading)}</h4>` : (notice.pinned ? `<div class="text-xs font-bold text-amber-600 flex items-center justify-center gap-1"><i class="fas fa-thumbtack"></i> Pinned Notice</div>` : '')}
+                                    ${hasImage ? `<div class="notice-image-wrap cursor-pointer rounded-xl overflow-hidden border border-slate-100 bg-slate-50 flex justify-center" data-notice-card-img="1" data-notice-index="${index}"><img src="${notice.image}" alt="${escapeHtml(notice.heading || 'Notification image')}" class="max-h-72 w-auto object-contain" loading="lazy"></div>` : ''}
+                                    ${hasText ? `<p class="notice-body ${longNotice ? 'notice-preview-clamp' : ''}">${renderNoticeTextWithLinks(notice.text, 25)}</p>` : ''}
                                     <div class="notice-footer">
                                         <span class="notice-date"><i class="far fa-calendar-alt"></i> ${escapeHtml(notice.date || 'Date unavailable')}</span>
-                                        ${longNotice ? `<button type="button" class="notice-expand-btn" data-notice-index="${index}">Expand</button>` : ''}
+                                        ${(longNotice || hasImage) ? `<button type="button" class="notice-expand-btn" data-notice-index="${index}">${longNotice ? 'Expand' : 'View'}</button>` : ''}
                                     </div>
                                 </article>
                             `;
                             }).join('');
                             fitNoticeViewportForFourCards();
+                            noticeListEl.querySelectorAll('img').forEach((img) => {
+                                img.addEventListener('load', fitNoticeViewportForFourCards, { once: true });
+                            });
                         }
 
                         // Gallery Display Logic

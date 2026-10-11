@@ -30,6 +30,56 @@ const filters = {
     statusFilter: 'ALL' // 'ALL', 'CONCESSION', 'GROUP', 'PENDING'
 };
 
+// Bulk Selection State for Master Fee Ledger
+// Key: `${unitId}__${month}`, Value: { unitId, month, type: 'pay' | 'edit', paymentId }
+const selectedLedgerCells = new Map();
+
+const updateLedgerBulkActionButtons = () => {
+    const actionsWrap = document.getElementById('ledger-bulk-actions');
+    const collectBtn = document.getElementById('ledger-bulk-collect-btn');
+    const collectLabel = document.getElementById('ledger-bulk-collect-label');
+    const editBtn = document.getElementById('ledger-bulk-edit-btn');
+    const editLabel = document.getElementById('ledger-bulk-edit-label');
+
+    let payCount = 0;
+    let editCount = 0;
+    selectedLedgerCells.forEach(val => {
+        if (val.type === 'pay') payCount += 1;
+        else if (val.type === 'edit') editCount += 1;
+    });
+
+    if (actionsWrap) {
+        const hasAny = payCount > 0 || editCount > 0;
+        actionsWrap.classList.toggle('hidden', !hasAny);
+        actionsWrap.classList.toggle('flex', hasAny);
+    }
+
+    if (collectBtn && collectLabel) {
+        collectBtn.classList.toggle('hidden', payCount === 0);
+        collectBtn.classList.toggle('flex', payCount > 0);
+        collectLabel.textContent = `Collect (${payCount})`;
+    }
+
+    if (editBtn && editLabel) {
+        editBtn.classList.toggle('hidden', editCount === 0);
+        editBtn.classList.toggle('flex', editCount > 0);
+        editLabel.textContent = `Edit (${editCount})`;
+    }
+};
+
+export const clearLedgerBulkSelection = () => {
+    selectedLedgerCells.clear();
+    document.querySelectorAll('.ledger-cell-select-cb').forEach(cb => {
+        cb.checked = false;
+        const cell = cb.closest('td');
+        if (cell) cell.classList.remove('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
+    });
+    document.querySelectorAll('.ledger-col-select-all-cb').forEach(cb => {
+        cb.checked = false;
+    });
+    updateLedgerBulkActionButtons();
+};
+
 const STANDARD_ACADEMIC_MONTHS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
 
 // Class ranking helper
@@ -321,7 +371,12 @@ const renderLedgerTable = () => {
                     <th class="px-2.5 py-3.5 text-center border-r border-slate-200 min-w-[110px] text-emerald-900 bg-emerald-50/50">EXTRA FEES</th>
                     <th class="px-2 py-3.5 text-center border-r border-slate-200 w-16 text-rose-900 bg-rose-50/40">ARREARS</th>
                     ${STANDARD_ACADEMIC_MONTHS.map(m => `
-                        <th class="px-2 py-3.5 text-center border-r border-slate-200 min-w-[95px]">${m.toUpperCase()}</th>
+                        <th class="px-2 py-2.5 text-center border-r border-slate-200 min-w-[98px]">
+                            <div class="flex flex-col items-center gap-1">
+                                <span>${m.toUpperCase()}</span>
+                                <input type="checkbox" class="ledger-col-select-all-cb w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" data-month="${m}" title="Select all unpaid in ${m}">
+                            </div>
+                        </th>
                     `).join('')}
                 </tr>
             </thead>
@@ -416,16 +471,29 @@ const renderLedgerTable = () => {
                 <!-- 12 ACADEMIC MONTHS -->
                 ${STANDARD_ACADEMIC_MONTHS.map(month => {
                     const st = unit.monthStatus[month] || { isPaid: false, due: unit.fee };
+                    const selKey = `${unit.id}__${month}`;
+                    const isSelected = selectedLedgerCells.has(selKey);
+                    const selRing = isSelected ? 'ring-2 ring-blue-500 ring-inset bg-blue-50/70' : '';
 
                     if (st.isPaid) {
                         return `
-                            <td class="px-1.5 py-2 text-center border-r border-slate-200 bg-emerald-50/50 fee-cell-interactive cursor-pointer hover:bg-emerald-100 transition"
-                                data-ledger-action="view-receipt" data-payment-id="${st.paymentId || ''}" data-unit-id="${unit.id}" data-month="${month}" title="Click to view receipt or edit payment">
-                                <div class="flex flex-col items-center justify-center gap-0.5">
-                                    <div class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black border border-emerald-200">
-                                        <i class="fas fa-check text-[8px]"></i> Paid
+                            <td class="px-1.5 py-2 text-center border-r border-slate-200 bg-emerald-50/50 fee-cell-interactive cursor-pointer hover:bg-emerald-100 transition relative ${selRing}"
+                                data-ledger-action="view-receipt" data-payment-id="${st.paymentId || ''}" data-unit-id="${unit.id}" data-month="${month}" title="Click to view receipt or tick checkbox to bulk edit">
+                                <div class="flex items-center justify-between mb-0.5 px-0.5">
+                                    <input type="checkbox" class="ledger-cell-select-cb w-3.5 h-3.5 rounded border-emerald-400 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                                        data-sel-key="${escapeHtml(selKey)}"
+                                        data-unit-id="${escapeHtml(unit.id)}"
+                                        data-month="${escapeHtml(month)}"
+                                        data-sel-type="edit"
+                                        data-payment-id="${escapeHtml(st.paymentId || '')}"
+                                        ${isSelected ? 'checked' : ''}
+                                        title="Select to bulk edit">
+                                    <div class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[9px] font-black border border-emerald-200">
+                                        <i class="fas fa-check text-[7px]"></i> Paid
                                     </div>
-                                    <div class="text-[9px] font-mono font-bold text-emerald-850 truncate max-w-[85px] mt-0.5" title="${escapeHtml(st.receipt)}">${st.receipt ? `R:${escapeHtml(st.receipt)}` : 'Paid'}</div>
+                                </div>
+                                <div class="flex flex-col items-center justify-center">
+                                    <div class="text-[9px] font-mono font-bold text-emerald-850 truncate max-w-[85px]" title="${escapeHtml(st.receipt)}">${st.receipt ? `R:${escapeHtml(st.receipt)}` : 'Paid'}</div>
                                     <div class="text-[9px] text-emerald-600 font-medium">${escapeHtml(st.date)}</div>
                                 </div>
                             </td>
@@ -433,14 +501,21 @@ const renderLedgerTable = () => {
                     }
 
                     return `
-                        <td class="px-1.5 py-2 text-center border-r border-slate-200 bg-white fee-cell-interactive cursor-pointer hover:bg-blue-50 transition"
-                            data-ledger-action="pay-fee" data-unit-id="${unit.id}" data-month="${month}" data-fee="${unit.fee}" title="Click to record fee payment">
-                            <div class="flex flex-col items-center justify-center gap-1">
-                                <div class="inline-flex items-center gap-1 text-[10px] font-black text-rose-500">
-                                    <span class="w-2.5 h-2.5 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-[7px] font-bold">!</span>
-                                    <span>Not Paid</span>
-                                </div>
-                                <button type="button" class="ledger-quick-pay-btn px-2.5 py-0.5 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 rounded-md font-bold text-[10px] transition border border-blue-200 shadow-2xs">
+                        <td class="px-1.5 py-2 text-center border-r border-slate-200 bg-white fee-cell-interactive cursor-pointer hover:bg-blue-50 transition relative ${selRing}"
+                            data-ledger-action="pay-fee" data-unit-id="${unit.id}" data-month="${month}" data-fee="${unit.fee}" title="Click to record fee payment or tick checkbox for multi-entry">
+                            <div class="flex items-center justify-between mb-1 px-0.5">
+                                <input type="checkbox" class="ledger-cell-select-cb w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                    data-sel-key="${escapeHtml(selKey)}"
+                                    data-unit-id="${escapeHtml(unit.id)}"
+                                    data-month="${escapeHtml(month)}"
+                                    data-sel-type="pay"
+                                    data-fee="${unit.fee}"
+                                    ${isSelected ? 'checked' : ''}
+                                    title="Select to collect together">
+                                <span class="text-[9px] font-black text-rose-500">Unpaid</span>
+                            </div>
+                            <div class="flex flex-col items-center justify-center">
+                                <button type="button" class="ledger-quick-pay-btn w-full py-0.5 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 rounded-md font-bold text-[10px] transition border border-blue-200 shadow-2xs">
                                     Pay
                                 </button>
                             </div>
@@ -460,6 +535,7 @@ const renderLedgerTable = () => {
 
     // Attach event handlers for interactive checkboxes & buttons
     attachTableEventHandlers(list);
+    updateLedgerBulkActionButtons();
 };
 
 // Event handlers on table elements
@@ -476,10 +552,73 @@ const attachTableEventHandlers = (currentUnits) => {
         });
     });
 
+    // 1b. Column Header "Select All in Month" Checkboxes
+    document.querySelectorAll('.ledger-col-select-all-cb').forEach(colCb => {
+        colCb.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+        colCb.addEventListener('change', (e) => {
+            const month = colCb.dataset.month;
+            const shouldCheck = colCb.checked;
+            const monthCbs = Array.from(document.querySelectorAll(`.ledger-cell-select-cb[data-month="${month}"][data-sel-type="pay"]`));
+            const targetCbs = monthCbs.length > 0
+                ? monthCbs
+                : Array.from(document.querySelectorAll(`.ledger-cell-select-cb[data-month="${month}"]`));
+
+            targetCbs.forEach(cb => {
+                cb.checked = shouldCheck;
+                const selKey = cb.dataset.selKey;
+                const td = cb.closest('td');
+                if (shouldCheck) {
+                    selectedLedgerCells.set(selKey, {
+                        unitId: cb.dataset.unitId,
+                        month: cb.dataset.month,
+                        type: cb.dataset.selType,
+                        paymentId: cb.dataset.paymentId || '',
+                        fee: Number(cb.dataset.fee || 200)
+                    });
+                    if (td) td.classList.add('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
+                } else {
+                    selectedLedgerCells.delete(selKey);
+                    if (td) td.classList.remove('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
+                }
+            });
+            updateLedgerBulkActionButtons();
+        });
+    });
+
+    // 1c. Individual Cell Checkboxes
+    document.querySelectorAll('.ledger-cell-select-cb').forEach(cb => {
+        cb.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+        cb.addEventListener('change', () => {
+            const selKey = cb.dataset.selKey;
+            const td = cb.closest('td');
+            if (cb.checked) {
+                selectedLedgerCells.set(selKey, {
+                    unitId: cb.dataset.unitId,
+                    month: cb.dataset.month,
+                    type: cb.dataset.selType,
+                    paymentId: cb.dataset.paymentId || '',
+                    fee: Number(cb.dataset.fee || 200)
+                });
+                if (td) td.classList.add('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
+            } else {
+                selectedLedgerCells.delete(selKey);
+                if (td) td.classList.remove('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
+            }
+            updateLedgerBulkActionButtons();
+        });
+    });
+
     // 2. Cell Action clicks (Pay or View Receipt)
     const tableContainer = document.getElementById('master-ledger-table-container');
     if (tableContainer) {
         tableContainer.onclick = (e) => {
+            if (e.target.closest('.ledger-cell-select-cb') || e.target.closest('.ledger-col-select-all-cb')) {
+                return;
+            }
             const viewCell = e.target.closest('[data-ledger-action="view-receipt"]');
             if (viewCell) {
                 const paymentId = viewCell.dataset.paymentId;
@@ -513,6 +652,77 @@ const attachTableEventHandlers = (currentUnits) => {
             }
         };
     }
+};
+
+// Trigger Bulk Collect or Bulk Edit Modal for selected cells in Master Fee Ledger
+const openLedgerBulkActionModal = (actionType = 'pay') => {
+    const allUnits = buildLedgerUnits();
+    const bulkItems = [];
+
+    selectedLedgerCells.forEach((sel, selKey) => {
+        if (sel.type !== actionType) return;
+        const unit = allUnits.find(u => u.id === sel.unitId);
+        if (!unit) return;
+
+        const cbEl = document.querySelector(`.ledger-cell-select-cb[data-sel-key="${CSS.escape(selKey)}"]`);
+        const cellEl = cbEl ? cbEl.closest('td') : null;
+        const studentNames = unit.students.map(s => s.name).join(', ');
+        const studentClasses = unit.classes.join(', ');
+        const primaryStudent = unit.students[0] || {};
+
+        if (actionType === 'pay') {
+            bulkItems.push({
+                unitId: unit.id,
+                studentId: primaryStudent.id || unit.id,
+                studentName: unit.isGroup ? `${studentNames} (Group)` : studentNames,
+                studentClass: studentClasses,
+                studentAdm: unit.students.map(s => s.adm).filter(Boolean).join(', '),
+                guardian: unit.guardian || '',
+                billingGroupId: unit.isGroup ? unit.groupId : null,
+                month: sel.month,
+                itemKey: sel.month.toLowerCase(),
+                itemName: unit.isGroup ? `${sel.month} Tuition Fee (Family Group)` : `${sel.month} Tuition Fee`,
+                itemType: 'month',
+                amount: Number(unit.fee || sel.fee || ledgerDefaultFee || 200),
+                academicYear: ledgerAcademicYear,
+                targetCellElement: cellEl
+            });
+        } else if (actionType === 'edit') {
+            const mIds = unit.students.map(s => s.id);
+            const payment = ledgerPayments.find(p => (sel.paymentId && p.id === sel.paymentId) || ((p.billingGroupId === unit.groupId || mIds.includes(p.studentId)) && isMonthMatch(p.itemKey, sel.month)));
+            if (payment) {
+                bulkItems.push({
+                    paymentId: payment.id,
+                    payment: payment,
+                    studentId: payment.studentId || primaryStudent.id,
+                    studentName: payment.studentName || studentNames,
+                    studentClass: payment.studentClass || studentClasses,
+                    guardian: unit.guardian || payment.guardianName || '',
+                    month: sel.month,
+                    itemKey: payment.itemKey || sel.month.toLowerCase(),
+                    itemName: payment.itemName || `${sel.month} Tuition Fee`,
+                    amount: Number(payment.amount || unit.fee || 200),
+                    academicYear: payment.academicYear || ledgerAcademicYear,
+                    targetCellElement: cellEl
+                });
+            }
+        }
+    });
+
+    if (bulkItems.length === 0) {
+        showToast('No valid items selected.', 'info');
+        return;
+    }
+
+    openFeeEntryEditModal({
+        source: 'master-ledger',
+        mode: actionType === 'edit' ? 'bulk-edit' : 'bulk-add',
+        bulkItems: bulkItems,
+        academicYear: ledgerAcademicYear,
+        onUpdated: () => {
+            clearLedgerBulkSelection();
+        }
+    });
 };
 
 // Open Quick Pay Modal for recording new payment in Master Ledger
@@ -721,6 +931,7 @@ const resetFilters = () => {
     const statusFilter = document.getElementById('ledger-status-filter');
     if (statusFilter) statusFilter.value = 'ALL';
 
+    clearLedgerBulkSelection();
     renderLedgerTable();
 };
 
@@ -798,11 +1009,22 @@ export const initMasterLedgerModule = () => {
         });
     }
 
-    // 7. Clear Filters Button
+    // 7. Clear Filters & Selection Button
     const clearBtn = document.getElementById('ledger-clear-filters-btn');
     if (clearBtn) {
-        clearBtn.addEventListener('click', resetFilters);
+        clearBtn.addEventListener('click', () => {
+            if (selectedLedgerCells.size > 0) {
+                clearLedgerBulkSelection();
+                showToast('Selection cleared.', 'info');
+            } else {
+                resetFilters();
+            }
+        });
     }
+
+    // 7b. Bulk Collect & Bulk Edit Buttons
+    document.getElementById('ledger-bulk-collect-btn')?.addEventListener('click', () => openLedgerBulkActionModal('pay'));
+    document.getElementById('ledger-bulk-edit-btn')?.addEventListener('click', () => openLedgerBulkActionModal('edit'));
 
     // 8. PDF Export Button
     const pdfBtn = document.getElementById('master-ledger-pdf-btn');

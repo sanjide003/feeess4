@@ -87,7 +87,10 @@ export const openFeeEntryEditModal = (options = {}) => {
     activeModalOptions = { ...options };
 
     const isEdit = options.mode === 'edit' || Boolean(options.payment || options.paymentId);
-    const existingPayment = options.payment || null;
+    const isBulkAdd = options.mode === 'bulk-add' && Array.isArray(options.bulkItems) && options.bulkItems.length > 0;
+    const isBulkEdit = options.mode === 'bulk-edit' && Array.isArray(options.bulkItems) && options.bulkItems.length > 0;
+    const isBulk = isBulkAdd || isBulkEdit;
+    const existingPayment = options.payment || (isBulkEdit ? options.bulkItems[0]?.payment : null) || null;
 
     // Resolve Student / Unit details
     const student = options.student || (existingPayment ? {
@@ -99,11 +102,13 @@ export const openFeeEntryEditModal = (options = {}) => {
     } : null);
 
     const unit = options.unit || null;
-    const isGroup = Boolean(unit?.isGroup);
+    const isGroup = Boolean(unit?.isGroup) && !isBulk;
 
     // Labels & Keys
     const effectiveItemKey = (existingPayment?.itemKey || options.itemKey || options.month || 'fee').toLowerCase();
-    const effectiveItemName = existingPayment?.itemName || options.itemName || (options.month ? `${options.month} Tuition Fee` : 'Tuition Fee');
+    const effectiveItemName = isBulk
+        ? `${options.bulkItems.length} Fee Items`
+        : (existingPayment?.itemName || options.itemName || (options.month ? `${options.month} Tuition Fee` : 'Tuition Fee'));
     const effectiveMonth = options.month || existingPayment?.itemKey || 'Tuition Fee';
     const effectiveYear = options.academicYear || existingPayment?.academicYear || window.currentWorkingAcademicYear || window.MasterLedger?.academicYear || '2025-2026';
 
@@ -136,7 +141,7 @@ export const openFeeEntryEditModal = (options = {}) => {
     if (yearEl) yearEl.value = effectiveYear;
 
     const sourceEl = document.getElementById('ledger-pay-source');
-    if (sourceEl) sourceEl.value = options.source || (isEdit ? 'edit' : 'ledger');
+    if (sourceEl) sourceEl.value = isBulk ? options.mode : (options.source || (isEdit ? 'edit' : 'ledger'));
 
     const paymentIdEl = document.getElementById('ledger-pay-payment-id');
     if (paymentIdEl) paymentIdEl.value = existingPayment?.id || options.paymentId || '';
@@ -147,12 +152,18 @@ export const openFeeEntryEditModal = (options = {}) => {
     // Title & Header Badges
     const titleEl = modal.querySelector('h3');
     if (titleEl) {
-        titleEl.textContent = isEdit ? 'Edit Fee Payment' : 'Record Fee Payment';
+        if (isBulkEdit) titleEl.textContent = `Edit ${options.bulkItems.length} Selected Payments`;
+        else if (isBulkAdd) titleEl.textContent = `Collect ${options.bulkItems.length} Selected Fees`;
+        else titleEl.textContent = isEdit ? 'Edit Fee Payment' : 'Record Fee Payment';
     }
 
     const subTitleEl = modal.querySelector('h3 + p');
     if (subTitleEl) {
-        if (isEdit) {
+        if (isBulkEdit) {
+            subTitleEl.textContent = 'Bulk Edit Selected Fee Receipts';
+        } else if (isBulkAdd) {
+            subTitleEl.textContent = 'Single Receipt for Multiple Selected Items';
+        } else if (isEdit) {
             subTitleEl.textContent = 'Modify Verified Transaction Record';
         } else if (options.source === 'fee-status') {
             subTitleEl.textContent = 'Instant Fee Status Entry';
@@ -164,7 +175,8 @@ export const openFeeEntryEditModal = (options = {}) => {
     const submitBtn = document.getElementById('ledger-pay-confirm-btn');
     if (submitBtn) {
         submitBtn.disabled = false;
-        submitBtn.innerHTML = isEdit
+        submitBtn.classList.remove('opacity-50');
+        submitBtn.innerHTML = (isEdit || isBulkEdit)
             ? '<i class="fas fa-save mr-1"></i> Update Payment'
             : '<i class="fas fa-check mr-1"></i> Record Payment';
     }
@@ -176,24 +188,81 @@ export const openFeeEntryEditModal = (options = {}) => {
 
     // Display Names & Meta
     const namesEl = document.getElementById('ledger-pay-names');
-    if (namesEl) {
-        if (unit) {
-            namesEl.textContent = unit.students.map((s, i) => `${unit.isGroup ? `${i + 1}. ` : ''}${s.name} (${s.class || s.studentClass || '-'})`).join(', ');
-        } else if (student) {
-            namesEl.textContent = `${student.name} (Adm: ${student.adm || '-'})`;
-        } else {
-            namesEl.textContent = 'Student';
+    const guardianEl = document.getElementById('ledger-pay-guardian');
+    const classTag = document.getElementById('ledger-pay-class-tag');
+
+    if (isBulk) {
+        const uniqueStudentNames = [...new Set(options.bulkItems.map(item => item.studentName).filter(Boolean))];
+        const uniqueClasses = [...new Set(options.bulkItems.map(item => item.studentClass).filter(Boolean))];
+        if (namesEl) {
+            namesEl.textContent = uniqueStudentNames.length === 1
+                ? uniqueStudentNames[0]
+                : `${uniqueStudentNames.length} Students (${uniqueStudentNames.slice(0, 2).join(', ')}${uniqueStudentNames.length > 2 ? '...' : ''})`;
+        }
+        if (guardianEl) {
+            guardianEl.textContent = uniqueStudentNames.length === 1 ? (options.bulkItems[0]?.guardian || '--') : 'Multiple';
+        }
+        if (classTag) {
+            classTag.textContent = `Class: ${uniqueClasses.join(', ') || '-'}`;
+        }
+    } else {
+        if (namesEl) {
+            if (unit) {
+                namesEl.textContent = unit.students.map((s, i) => `${unit.isGroup ? `${i + 1}. ` : ''}${s.name} (${s.class || s.studentClass || '-'})`).join(', ');
+            } else if (student) {
+                namesEl.textContent = `${student.name} (Adm: ${student.adm || '-'})`;
+            } else {
+                namesEl.textContent = 'Student';
+            }
+        }
+        if (guardianEl) {
+            guardianEl.textContent = unit?.guardian || student?.guardian || '--';
+        }
+        if (classTag) {
+            classTag.textContent = unit ? `Class: ${unit.classes?.join(', ')}` : `Class: ${student?.class || '-'}`;
         }
     }
 
-    const guardianEl = document.getElementById('ledger-pay-guardian');
-    if (guardianEl) {
-        guardianEl.textContent = unit?.guardian || student?.guardian || '--';
-    }
+    // Multi-Items Bulk Breakdown List
+    const multiWrap = document.getElementById('ledger-pay-multi-items-wrap');
+    const multiListEl = document.getElementById('ledger-pay-multi-items-list');
+    const multiCountEl = document.getElementById('ledger-multi-items-count');
 
-    const classTag = document.getElementById('ledger-pay-class-tag');
-    if (classTag) {
-        classTag.textContent = unit ? `Class: ${unit.classes?.join(', ')}` : `Class: ${student?.class || '-'}`;
+    if (isBulk && multiWrap && multiListEl) {
+        multiWrap.classList.remove('hidden');
+        if (multiCountEl) multiCountEl.textContent = `${options.bulkItems.length} Selected`;
+
+        multiListEl.innerHTML = options.bulkItems.map((item, idx) => {
+            const itemAmt = Number(isBulkEdit ? (item.payment?.amount ?? item.amount ?? 200) : (item.amount ?? 200));
+            return `
+                <div class="flex items-center justify-between gap-2 p-2 rounded-lg bg-white border border-blue-200/80 shadow-2xs">
+                    <div class="min-w-0 flex-1">
+                        <div class="font-bold text-slate-800 text-xs truncate">${idx + 1}. ${escapeHtml(item.studentName || 'Student')} <span class="text-[10px] font-semibold text-slate-500">(${escapeHtml(item.studentClass || '-')})</span></div>
+                        <div class="text-[10px] font-bold text-blue-700">${escapeHtml(item.itemName || item.month || item.itemKey || 'Tuition Fee')}${item.payment?.receiptNo ? ` • R:${escapeHtml(item.payment.receiptNo)}` : ''}</div>
+                    </div>
+                    <div class="flex items-center gap-1 shrink-0">
+                        <span class="text-[10px] font-bold text-slate-400">₹</span>
+                        <input type="number" class="bulk-item-amount-input w-20 px-2 py-1 text-right text-xs font-mono font-bold border border-slate-200 rounded-md focus:border-blue-500 outline-none" data-bulk-idx="${idx}" value="${itemAmt}">
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        const syncBulkTotalAmount = () => {
+            let sum = 0;
+            multiListEl.querySelectorAll('.bulk-item-amount-input').forEach(inp => {
+                sum += Number(inp.value || 0);
+            });
+            const amtEl = document.getElementById('ledger-pay-amount');
+            if (amtEl) amtEl.value = sum;
+        };
+
+        multiListEl.querySelectorAll('.bulk-item-amount-input').forEach(inp => {
+            inp.addEventListener('input', syncBulkTotalAmount);
+        });
+    } else if (multiWrap) {
+        multiWrap.classList.add('hidden');
+        if (multiListEl) multiListEl.innerHTML = '';
     }
 
     // Group Scope Wrap: Render vertical student list for group selection
@@ -308,25 +377,32 @@ export const openFeeEntryEditModal = (options = {}) => {
     }
 
     // Amount, Receipt, Date, Mode
-    const defaultFeeAmount = isEdit
-        ? (existingPayment?.amount || 0)
-        : (options.defaultAmount || unit?.fee || 200);
+    const defaultFeeAmount = isBulk
+        ? options.bulkItems.reduce((acc, item) => acc + Number(isBulkEdit ? (item.payment?.amount ?? item.amount ?? 200) : (item.amount ?? 200)), 0)
+        : (isEdit ? (existingPayment?.amount || 0) : (options.defaultAmount || unit?.fee || 200));
 
     const calculatedNextReceipt = getGlobalNextReceiptNumber();
-    const nextReceipt = isEdit
+    const nextReceipt = (isEdit || isBulkEdit)
         ? (existingPayment?.receiptNo || '')
         : (options.receiptNo || calculatedNextReceipt || '');
 
-    const paymentDateVal = isEdit
+    const paymentDateVal = (isEdit || isBulkEdit)
         ? (existingPayment?.paymentDate || new Date().toISOString().split('T')[0])
         : new Date().toISOString().split('T')[0];
 
-    const paymentModeVal = isEdit
+    const paymentModeVal = (isEdit || isBulkEdit)
         ? (existingPayment?.paymentMode || 'Cash')
         : 'Cash';
 
     const amtInput = document.getElementById('ledger-pay-amount');
-    if (amtInput) amtInput.value = defaultFeeAmount;
+    if (amtInput) {
+        amtInput.value = defaultFeeAmount;
+        if (isBulk) {
+            amtInput.addEventListener('input', () => {
+                // Allow user to override total or individual inputs
+            }, { once: true });
+        }
+    }
 
     const rcptInput = document.getElementById('ledger-pay-receipt');
     if (rcptInput) rcptInput.value = nextReceipt;
@@ -478,9 +554,81 @@ export const submitFeeEntryPayment = async () => {
             window.AppSession?.getStaffAccess?.()?.loginId ||
             'admin@institution.edu';
 
-        let savedPaymentRecord = null;
+        const isBulkAdd = activeModalOptions?.mode === 'bulk-add' && Array.isArray(activeModalOptions?.bulkItems);
+        const isBulkEdit = activeModalOptions?.mode === 'bulk-edit' && Array.isArray(activeModalOptions?.bulkItems);
+        const isBulk = isBulkAdd || isBulkEdit;
 
-        if (isEdit && existingPaymentId) {
+        let savedPaymentRecord = null;
+        const savedPaymentRecords = [];
+
+        if (isBulk) {
+            const bulkItems = activeModalOptions.bulkItems;
+            const itemAmountInputs = Array.from(document.querySelectorAll('.bulk-item-amount-input'));
+            const sharedTxnId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+
+            bulkItems.forEach((bItem, idx) => {
+                const inpEl = itemAmountInputs.find(el => Number(el.dataset.bulkIdx) === idx);
+                const itemAmt = inpEl ? Number(inpEl.value || 0) : Number(bItem.amount || 200);
+                const itemAcademicYear = bItem.academicYear || academicYear;
+                const itemCleanYear = String(itemAcademicYear).replace(/[^\w-]/g, '_');
+
+                if (isBulkEdit && (bItem.payment?.id || bItem.paymentId)) {
+                    const pId = bItem.payment?.id || bItem.paymentId;
+                    const payRef = doc(db, `${BASE_PATH}/payments`, pId);
+                    const updatePayload = {
+                        amount: itemAmt > 0 ? itemAmt : Number(bItem.payment?.amount || 200),
+                        receiptNo: receiptNo || '',
+                        paymentDate: paymentDate,
+                        paymentMode: mode,
+                        updatedAt: new Date().toISOString()
+                    };
+                    batch.set(payRef, updatePayload, { merge: true });
+                    if (itemAcademicYear) {
+                        batch.set(doc(db, `${BASE_PATH}/years/${itemAcademicYear}/payments`, pId), updatePayload, { merge: true });
+                        batch.set(doc(db, `${BASE_PATH}/academicYears/${itemCleanYear}/payments`, pId), updatePayload, { merge: true });
+                    }
+                    const rec = {
+                        ...(bItem.payment || {}),
+                        id: pId,
+                        ...updatePayload
+                    };
+                    savedPaymentRecords.push({ record: rec, cell: bItem.targetCellElement });
+                } else if (isBulkAdd) {
+                    const payRef = doc(collection(db, `${BASE_PATH}/payments`));
+                    const bKey = String(bItem.itemKey || bItem.month || 'fee').toLowerCase();
+                    const bName = bItem.itemName || (bItem.month ? `${bItem.month} Tuition Fee` : 'Tuition Fee');
+                    const paymentPayload = {
+                        studentId: bItem.studentId,
+                        studentName: bItem.studentName || 'Student',
+                        studentClass: bItem.studentClass || '-',
+                        classLabel: bItem.studentClass || '-',
+                        studentAdm: bItem.studentAdm || '',
+                        guardianName: bItem.guardian || '',
+                        amount: itemAmt > 0 ? itemAmt : Number(bItem.amount || 200),
+                        receiptNo: receiptNo || '',
+                        itemKey: bKey,
+                        itemName: bName,
+                        itemType: bItem.itemType || 'month',
+                        paymentMode: mode,
+                        paymentDate: paymentDate,
+                        timestamp: Date.now(),
+                        transactionId: sharedTxnId,
+                        collectedBy: collectorEmail,
+                        academicYear: itemAcademicYear,
+                        status: 'FULL'
+                    };
+                    if (bItem.billingGroupId) {
+                        paymentPayload.billingGroupId = bItem.billingGroupId;
+                    }
+                    batch.set(payRef, paymentPayload);
+                    batch.set(doc(db, `${BASE_PATH}/years/${itemAcademicYear}/payments`, payRef.id), paymentPayload);
+                    batch.set(doc(db, `${BASE_PATH}/academicYears/${itemCleanYear}/payments`, payRef.id), paymentPayload);
+                    const rec = { id: payRef.id, ...paymentPayload };
+                    savedPaymentRecords.push({ record: rec, cell: bItem.targetCellElement });
+                }
+            });
+            savedPaymentRecord = savedPaymentRecords[0]?.record || null;
+        } else if (isEdit && existingPaymentId) {
             // EDIT EXISTING PAYMENT
             const payRef = doc(db, `${BASE_PATH}/payments`, existingPaymentId);
             const updatePayload = {
@@ -510,6 +658,7 @@ export const submitFeeEntryPayment = async () => {
                 academicYear: academicYear,
                 ...updatePayload
             };
+            savedPaymentRecords.push({ record: savedPaymentRecord, cell: activeModalOptions?.targetCellElement });
         } else {
             // NEW PAYMENT ENTRY (Supports selecting individual child or all children from group)
             const unit = activeModalOptions?.unit || null;
@@ -592,44 +741,50 @@ export const submitFeeEntryPayment = async () => {
                 id: payRef.id,
                 ...paymentPayload
             };
+            savedPaymentRecords.push({ record: savedPaymentRecord, cell: activeModalOptions?.targetCellElement });
         }
 
         // Commit to Firestore directly
         await batch.commit();
 
         // 1. Instant Cell DOM Update (immediate visual feedback for user)
-        if (activeModalOptions?.targetCellElement) {
-            applyInstantCellUpdate(activeModalOptions.targetCellElement, savedPaymentRecord);
-        }
+        savedPaymentRecords.forEach(({ record, cell }) => {
+            if (cell && record) {
+                applyInstantCellUpdate(cell, record);
+            }
+        });
 
         // 2. Synchronize in-memory payments lists
-        if (Array.isArray(window.allPayments)) {
-            const idx = window.allPayments.findIndex(p => p.id === savedPaymentRecord.id);
-            if (idx >= 0) {
-                window.allPayments[idx] = { ...window.allPayments[idx], ...savedPaymentRecord };
-            } else {
-                window.allPayments.push(savedPaymentRecord);
+        savedPaymentRecords.forEach(({ record }) => {
+            if (!record) return;
+            if (Array.isArray(window.allPayments)) {
+                const idx = window.allPayments.findIndex(p => p.id === record.id);
+                if (idx >= 0) {
+                    window.allPayments[idx] = { ...window.allPayments[idx], ...record };
+                } else {
+                    window.allPayments.push(record);
+                }
             }
-        }
 
-        if (window.MasterLedger?.ledgerPayments && Array.isArray(window.MasterLedger.ledgerPayments)) {
-            const idx = window.MasterLedger.ledgerPayments.findIndex(p => p.id === savedPaymentRecord.id);
-            if (idx >= 0) {
-                window.MasterLedger.ledgerPayments[idx] = { ...window.MasterLedger.ledgerPayments[idx], ...savedPaymentRecord };
-            } else {
-                window.MasterLedger.ledgerPayments.push(savedPaymentRecord);
+            if (window.MasterLedger?.ledgerPayments && Array.isArray(window.MasterLedger.ledgerPayments)) {
+                const idx = window.MasterLedger.ledgerPayments.findIndex(p => p.id === record.id);
+                if (idx >= 0) {
+                    window.MasterLedger.ledgerPayments[idx] = { ...window.MasterLedger.ledgerPayments[idx], ...record };
+                } else {
+                    window.MasterLedger.ledgerPayments.push(record);
+                }
             }
-        }
+        });
 
         // 3. User feedback
-        const successMsg = isEdit
-            ? 'Payment updated successfully!'
-            : `Fee recorded successfully!${receiptNo ? ` Receipt: #${receiptNo}` : ''}`;
+        const successMsg = (isEdit || isBulkEdit)
+            ? (isBulkEdit ? `${savedPaymentRecords.length} payments updated successfully!` : 'Payment updated successfully!')
+            : (isBulkAdd ? `${savedPaymentRecords.length} fees recorded under Receipt${receiptNo ? ` #${receiptNo}` : ''}!` : `Fee recorded successfully!${receiptNo ? ` Receipt: #${receiptNo}` : ''}`);
         showToast(successMsg, 'success');
 
         // 4. Callback
         if (typeof activeModalOptions?.onUpdated === 'function') {
-            activeModalOptions.onUpdated(savedPaymentRecord);
+            activeModalOptions.onUpdated(isBulk ? savedPaymentRecords.map(r => r.record) : savedPaymentRecord);
         }
 
         // 5. Background sync for active tabs without full page reload

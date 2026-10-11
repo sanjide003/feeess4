@@ -367,10 +367,22 @@
                             <div><label class="block text-xs font-bold mb-1 text-slate-700">Class Filter</label><select id="filter-class" class="w-full p-2 rounded-xl text-xs font-bold border border-slate-200 bg-white"><option value="all">All Classes</option></select></div>
                             <div><label class="block text-xs font-bold mb-1 text-slate-700">Gender Filter</label><select id="filter-gender" class="w-full p-2 rounded-xl text-xs font-bold border border-slate-200 bg-white"><option value="all">All Genders</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
                         </div>
-                        <div class="flex items-center gap-2 self-end sm:self-auto">
-                            <span class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 text-xs font-bold border border-blue-100">
-                                <i class="fas fa-hand-pointer text-xs"></i> Click cell to Record or View Receipt
+                        <div class="flex flex-wrap items-center gap-2 self-end sm:self-auto">
+                            <span class="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 text-xs font-bold border border-blue-100">
+                                <i class="fas fa-hand-pointer text-xs"></i> Tick boxes for multi-entry or click cell
                             </span>
+                            <!-- Dynamic Bulk Selection Action Buttons for Fee Status -->
+                            <div id="fee-status-bulk-actions" class="hidden items-center gap-1.5">
+                                <button type="button" id="fee-status-clear-sel-btn" class="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition shadow-xs">
+                                    Clear
+                                </button>
+                                <button type="button" id="fee-status-bulk-collect-btn" class="hidden px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition items-center gap-1.5">
+                                    <i class="fas fa-check-double"></i> <span id="fee-status-bulk-collect-label">Collect (0)</span>
+                                </button>
+                                <button type="button" id="fee-status-bulk-edit-btn" class="hidden px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-sm transition items-center gap-1.5">
+                                    <i class="fas fa-pen-to-square"></i> <span id="fee-status-bulk-edit-label">Edit (0)</span>
+                                </button>
+                            </div>
                             <button id="fee-download-pdf-btn" class="py-2 px-4 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-sm flex items-center gap-2 text-xs transition"><i class="fas fa-file-pdf"></i> Download PDF</button>
                         </div>
                     </div>
@@ -379,8 +391,8 @@
                     <div class="flex justify-between items-center p-3 sm:p-4 border-b border-slate-200 bg-slate-50">
                          <h2 id="fee-status-title-header" class="text-sm font-extrabold text-slate-800">Fee Status</h2>
                          <div class="text-[11px] text-slate-500 font-semibold hidden sm:block">
-                             <span class="inline-flex items-center gap-1 text-emerald-700 font-bold mr-3"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Paid (Click for Slip)</span>
-                             <span class="inline-flex items-center gap-1 text-rose-600 font-bold"><span class="w-2 h-2 rounded-full bg-rose-400"></span> Unpaid (Click to Pay)</span>
+                             <span class="inline-flex items-center gap-1 text-emerald-700 font-bold mr-3"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Paid (Click for Slip / Tick to Edit)</span>
+                             <span class="inline-flex items-center gap-1 text-rose-600 font-bold"><span class="w-2 h-2 rounded-full bg-rose-400"></span> Unpaid (Click or Tick to Pay)</span>
                          </div>
                     </div>
                     <div id="fee-table-container" class="overflow-x-auto p-2 sm:p-4 custom-scroll max-h-[75vh]"></div>
@@ -438,6 +450,16 @@
                             <button type="button" id="ledger-clear-filters-btn" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition shadow-xs">
                                 Clear
                             </button>
+
+                            <!-- Dynamic Bulk Selection Action Buttons next to Clear -->
+                            <div id="ledger-bulk-actions" class="hidden items-center gap-1.5">
+                                <button type="button" id="ledger-bulk-collect-btn" class="hidden px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition items-center gap-1.5">
+                                    <i class="fas fa-check-double"></i> <span id="ledger-bulk-collect-label">Collect (0)</span>
+                                </button>
+                                <button type="button" id="ledger-bulk-edit-btn" class="hidden px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-sm transition items-center gap-1.5">
+                                    <i class="fas fa-pen-to-square"></i> <span id="ledger-bulk-edit-label">Edit (0)</span>
+                                </button>
+                            </div>
 
                             <!-- Preview PDF Action -->
                             <button type="button" id="master-ledger-pdf-btn" class="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow transition flex items-center gap-1.5">
@@ -688,17 +710,20 @@
 
     <!-- Quick Fee Payment Modal for Master Ledger -->
     <!-- Universal Fee Payment Modal for Master Ledger & Fee Status -->
-    <div id="master-ledger-pay-modal" class="modal-overlay hidden">
-        <div class="modal-box relative max-w-sm text-left">
-            <button type="button" id="ledger-pay-close-x" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><i class="fas fa-times text-lg"></i></button>
-            <div class="flex items-center gap-2 mb-3 border-b pb-2">
-                <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm">
-                    <i class="fas fa-receipt"></i>
+    <div id="master-ledger-pay-modal" class="modal-overlay hidden !p-3 sm:!p-4">
+        <div class="modal-box relative !max-w-md w-full !p-0 text-left flex flex-col max-h-[86vh] sm:max-h-[82vh] overflow-hidden rounded-2xl shadow-2xl border border-slate-200">
+            <!-- Pinned Header -->
+            <div class="flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-200 bg-white shrink-0">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0">
+                        <i class="fas fa-receipt"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-black text-slate-800 leading-tight">Record Fee Payment</h3>
+                        <p class="text-[11px] text-slate-500 leading-tight">Quick Fee Receipt Collection</p>
+                    </div>
                 </div>
-                <div>
-                    <h3 class="text-sm font-black text-slate-800">Record Fee Payment</h3>
-                    <p class="text-[11px] text-slate-500">Quick Fee Receipt Collection</p>
-                </div>
+                <button type="button" id="ledger-pay-close-x" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"><i class="fas fa-times text-base"></i></button>
             </div>
 
             <input type="hidden" id="ledger-pay-unit-id">
@@ -715,14 +740,15 @@
             <input type="hidden" id="ledger-pay-payment-id" value="">
             <input type="hidden" id="ledger-pay-txn-id" value="">
 
-            <div class="space-y-3 mb-4 text-xs">
+            <!-- Scrollable Body (Target Info + Group / Selected Items List) -->
+            <div class="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2.5 text-xs custom-scroll">
                 <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                    <div class="flex items-center justify-between mb-1">
+                    <div class="flex items-center justify-between gap-2 mb-0.5">
                         <span class="text-[10px] uppercase font-bold text-slate-500">Target Student / Family</span>
-                        <span id="ledger-pay-month-badge" class="text-[10px] font-black uppercase text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded-md">--</span>
+                        <span id="ledger-pay-month-badge" class="text-[10px] font-black uppercase text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded-md truncate max-w-[160px]">--</span>
                     </div>
-                    <div id="ledger-pay-names" class="font-bold text-slate-900 mt-0.5 truncate text-sm"></div>
-                    <div class="text-[10px] text-slate-500 mt-1 flex justify-between">
+                    <div id="ledger-pay-names" class="font-bold text-slate-900 truncate text-xs sm:text-sm"></div>
+                    <div class="text-[10px] text-slate-500 mt-0.5 flex justify-between">
                         <span>Guardian: <b id="ledger-pay-guardian" class="text-slate-700 font-semibold"></b></span>
                         <span id="ledger-pay-class-tag" class="text-slate-600 font-mono"></span>
                     </div>
@@ -738,29 +764,45 @@
                             <button type="button" id="ledger-group-toggle-all-btn" class="text-[10px] text-blue-600 hover:text-blue-800 font-bold underline">Deselect All</button>
                         </div>
                     </div>
-                    <div id="ledger-pay-group-students-list" class="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
+                    <div id="ledger-pay-group-students-list" class="space-y-1.5 max-h-40 overflow-y-auto pr-0.5 custom-scroll">
                         <!-- Dynamic vertical list of students with checkboxes -->
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-2">
+                <!-- Multi-Item Bulk Collection / Edit List -->
+                <div id="ledger-pay-multi-items-wrap" class="hidden bg-blue-50/60 p-2.5 rounded-xl border border-blue-200 text-slate-800 text-[11px] space-y-1.5">
+                    <div class="flex items-center justify-between pb-1 border-b border-blue-200/60">
+                        <span class="text-[10px] uppercase font-bold text-blue-900 flex items-center gap-1.5">
+                            <i class="fas fa-layer-group text-blue-600"></i> Selected Fee Items
+                        </span>
+                        <span id="ledger-multi-items-count" class="text-[10px] font-bold text-blue-800 bg-blue-100 px-1.5 py-0.5 rounded">0 Items</span>
+                    </div>
+                    <div id="ledger-pay-multi-items-list" class="space-y-1.5 max-h-40 overflow-y-auto pr-0.5 custom-scroll">
+                        <!-- Dynamic list of selected fee items with individual editable amounts -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pinned Bottom Section: Payment Fields & Action Buttons -->
+            <div class="px-4 py-3 bg-slate-50/90 border-t border-slate-200 shrink-0 space-y-2.5 text-xs">
+                <div class="grid grid-cols-2 gap-2.5">
                     <div>
-                        <label class="block font-bold text-slate-600 mb-1 text-[11px]">Amount (₹)</label>
-                        <input type="number" id="ledger-pay-amount" class="form-input text-xs font-bold" placeholder="Amount">
+                        <label class="block font-bold text-slate-600 mb-1 text-[11px]">Total Amount (₹)</label>
+                        <input type="number" id="ledger-pay-amount" class="form-input !mb-0 !py-2 !px-3 text-xs font-bold !rounded-xl" placeholder="Amount">
                     </div>
                     <div>
                         <label class="block font-bold text-slate-600 mb-1 text-[11px] flex items-center justify-between">
                             <span>Receipt No <span id="ledger-pay-receipt-req" class="text-rose-600 font-bold hidden">*</span></span>
                             <span id="ledger-pay-receipt-badge" class="text-[9px] text-slate-400 font-normal">--</span>
                         </label>
-                        <input type="number" id="ledger-pay-receipt" class="form-input text-xs font-mono font-bold" placeholder="Receipt No">
+                        <input type="number" id="ledger-pay-receipt" class="form-input !mb-0 !py-2 !px-3 text-xs font-mono font-bold !rounded-xl" placeholder="Receipt No">
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-2">
+                <div class="grid grid-cols-2 gap-2.5">
                     <div>
                         <label class="block font-bold text-slate-600 mb-1 text-[11px]">Payment Mode</label>
-                        <select id="ledger-pay-mode" class="form-input text-xs font-bold">
+                        <select id="ledger-pay-mode" class="form-input !mb-0 !py-2 !px-3 text-xs font-bold !rounded-xl">
                             <option value="Cash">Cash</option>
                             <option value="UPI / GPay / PhonePe">UPI / GPay / PhonePe</option>
                             <option value="Bank Transfer">Bank Transfer</option>
@@ -769,18 +811,18 @@
                     </div>
                     <div>
                         <label class="block font-bold text-slate-600 mb-1 text-[11px]">Payment Date</label>
-                        <input type="date" id="ledger-pay-date" class="form-input text-xs font-semibold">
+                        <input type="date" id="ledger-pay-date" class="form-input !mb-0 !py-2 !px-3 text-xs font-semibold !rounded-xl">
                     </div>
                 </div>
-            </div>
 
-            <div class="flex items-center justify-end gap-2 pt-2 border-t">
-                <button type="button" id="ledger-pay-cancel-btn" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition">
-                    Cancel
-                </button>
-                <button type="button" id="ledger-pay-confirm-btn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5">
-                    <i class="fas fa-check"></i> Record Payment
-                </button>
+                <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-200/80">
+                    <button type="button" id="ledger-pay-cancel-btn" class="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-xl text-xs transition border border-slate-200 shadow-2xs">
+                        Cancel
+                    </button>
+                    <button type="button" id="ledger-pay-confirm-btn" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5">
+                        <i class="fas fa-check"></i> Record Payment
+                    </button>
+                </div>
             </div>
         </div>
     </div>

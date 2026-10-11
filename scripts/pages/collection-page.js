@@ -2756,7 +2756,126 @@ const downloadFeeStatusPdf = () => {
 
 document.getElementById('fee-download-pdf-btn')?.addEventListener('click', downloadFeeStatusPdf);
 
-// --- FEE STATUS RENDER ---
+// --- FEE STATUS BULK SELECTION & RENDER ---
+const selectedFeeStatusCells = new Map();
+
+const updateFeeStatusBulkActionButtons = () => {
+    const actionsWrap = document.getElementById('fee-status-bulk-actions');
+    const collectBtn = document.getElementById('fee-status-bulk-collect-btn');
+    const collectLabel = document.getElementById('fee-status-bulk-collect-label');
+    const editBtn = document.getElementById('fee-status-bulk-edit-btn');
+    const editLabel = document.getElementById('fee-status-bulk-edit-label');
+
+    let payCount = 0;
+    let editCount = 0;
+    selectedFeeStatusCells.forEach(val => {
+        if (val.type === 'pay') payCount += 1;
+        else if (val.type === 'edit') editCount += 1;
+    });
+
+    if (actionsWrap) {
+        const hasAny = payCount > 0 || editCount > 0;
+        actionsWrap.classList.toggle('hidden', !hasAny);
+        actionsWrap.classList.toggle('flex', hasAny);
+    }
+
+    if (collectBtn && collectLabel) {
+        collectBtn.classList.toggle('hidden', payCount === 0);
+        collectBtn.classList.toggle('flex', payCount > 0);
+        collectLabel.textContent = `Collect (${payCount})`;
+    }
+
+    if (editBtn && editLabel) {
+        editBtn.classList.toggle('hidden', editCount === 0);
+        editBtn.classList.toggle('flex', editCount > 0);
+        editLabel.textContent = `Edit (${editCount})`;
+    }
+};
+
+const clearFeeStatusBulkSelection = () => {
+    selectedFeeStatusCells.clear();
+    document.querySelectorAll('.fee-status-cell-cb').forEach(cb => {
+        cb.checked = false;
+        const td = cb.closest('td');
+        if (td) td.classList.remove('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
+    });
+    document.querySelectorAll('.fee-status-col-all-cb').forEach(cb => {
+        cb.checked = false;
+    });
+    updateFeeStatusBulkActionButtons();
+};
+
+const openFeeStatusBulkActionModal = (actionType = 'pay') => {
+    const bulkItems = [];
+    const effectiveAcademicYear = selectedFeeAcademicYear || currentWorkingAcademicYear || getAcademicYearFromDate();
+
+    selectedFeeStatusCells.forEach((sel, selKey) => {
+        if (sel.type !== actionType) return;
+        const s = getStudentById(sel.studentId);
+        if (!s) return;
+
+        const cbEl = document.querySelector(`.fee-status-cell-cb[data-sel-key="${CSS.escape(selKey)}"]`);
+        const cellEl = cbEl ? cbEl.closest('td') : null;
+
+        if (actionType === 'pay') {
+            bulkItems.push({
+                studentId: s.id,
+                studentName: s.name || 'Student',
+                studentClass: s.class || '-',
+                studentAdm: s.adm || '',
+                guardian: s.guardian || s.father || '',
+                month: sel.itemName || sel.itemKey,
+                itemKey: sel.itemKey,
+                itemName: sel.itemName || `${sel.itemKey} Tuition Fee`,
+                itemType: sel.itemType || 'month',
+                amount: Number(sel.defaultAmount || defaultFee || 200),
+                academicYear: effectiveAcademicYear,
+                targetCellElement: cellEl
+            });
+        } else if (actionType === 'edit') {
+            const payment = allPayments.find(p => (sel.paymentId && p.id === sel.paymentId) || (p.studentId === sel.studentId && p.itemKey === sel.itemKey));
+            if (payment) {
+                bulkItems.push({
+                    paymentId: payment.id,
+                    payment: payment,
+                    studentId: s.id,
+                    studentName: s.name || payment.studentName || 'Student',
+                    studentClass: s.class || payment.studentClass || '-',
+                    guardian: s.guardian || s.father || payment.guardianName || '',
+                    month: sel.itemName || sel.itemKey,
+                    itemKey: payment.itemKey || sel.itemKey,
+                    itemName: payment.itemName || sel.itemName || 'Tuition Fee',
+                    amount: Number(payment.amount || sel.defaultAmount || defaultFee || 200),
+                    academicYear: payment.academicYear || effectiveAcademicYear,
+                    targetCellElement: cellEl
+                });
+            }
+        }
+    });
+
+    if (bulkItems.length === 0) {
+        showToast('No valid items selected.', 'info');
+        return;
+    }
+
+    openFeeEntryEditModal({
+        source: 'fee-status',
+        mode: actionType === 'edit' ? 'bulk-edit' : 'bulk-add',
+        bulkItems: bulkItems,
+        academicYear: effectiveAcademicYear,
+        onUpdated: () => {
+            clearFeeStatusBulkSelection();
+        }
+    });
+};
+
+document.getElementById('fee-status-clear-sel-btn')?.addEventListener('click', () => {
+    clearFeeStatusBulkSelection();
+    showToast('Selection cleared.', 'info');
+});
+document.getElementById('fee-status-bulk-collect-btn')?.addEventListener('click', () => openFeeStatusBulkActionModal('pay'));
+document.getElementById('fee-status-bulk-edit-btn')?.addEventListener('click', () => openFeeStatusBulkActionModal('edit'));
+
 const renderFeeTable = () => {
     const cont = document.getElementById('fee-table-container');
     if (!cont) return;
@@ -2776,7 +2895,12 @@ const renderFeeTable = () => {
             <tr>
                 <th class="p-3 sticky left-0 bg-slate-50 z-30 border-r border-slate-200 text-slate-700 font-extrabold w-20">Adm.No</th>
                 <th class="p-3 sticky left-20 bg-slate-50 z-30 border-r border-slate-200 text-slate-700 font-extrabold min-w-[200px]">Student Name</th>
-                ${items.map(i=>`<th class="p-3 border-r border-slate-200 text-center font-bold text-slate-700 min-w-[100px]">${normalizeFeeItemName(i.name)}</th>`).join('')}
+                ${items.map(i=>`<th class="p-2.5 border-r border-slate-200 text-center font-bold text-slate-700 min-w-[105px]">
+                    <div class="flex flex-col items-center gap-1">
+                        <span>${escapeHtml(normalizeFeeItemName(i.name))}</span>
+                        <input type="checkbox" class="fee-status-col-all-cb w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" data-item-key="${escapeHtml(i.key)}" title="Select all unpaid in ${escapeHtml(normalizeFeeItemName(i.name))}">
+                    </div>
+                </th>`).join('')}
             </tr>
         </thead>
         <tbody class="divide-y divide-slate-100 font-medium">`;
@@ -2812,29 +2936,57 @@ const renderFeeTable = () => {
 
             items.forEach(i => {
                 const p = allPayments.find(pay => pay.studentId === s.id && pay.itemKey === i.key);
+                const selKey = `${s.id}__${i.key}`;
+                const isSelected = selectedFeeStatusCells.has(selKey);
+                const selRing = isSelected ? 'ring-2 ring-blue-500 ring-inset bg-blue-50/70' : '';
+                const itemDefaultAmt = (s.concessionFee !== undefined && s.concessionFee !== null && s.concessionFee !== '' && (i.type || 'month') === 'month')
+                    ? Number(s.concessionFee)
+                    : Number(i.amount || defaultFee || 200);
+
                 if(p) {
-                    const staffName = getStaffName(p.collectedBy, p.collectedByName);
-                    html += `<td class="p-1.5 text-center bg-emerald-50/60 border-r border-slate-200 cursor-pointer hover:bg-emerald-100/90 transition group"
+                    html += `<td class="p-1.5 text-center bg-emerald-50/60 border-r border-slate-200 cursor-pointer hover:bg-emerald-100/90 transition group relative ${selRing}"
                         data-fee-action="view-receipt" data-payment-id="${p.id || ''}" data-student-id="${s.id}" data-item-key="${i.key}"
-                        title="Click to view receipt slip or edit payment">
-                        <div class="flex flex-col items-center justify-center gap-0.5">
-                            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black border border-emerald-200">
-                                <i class="fas fa-check text-[8px]"></i> Paid
+                        title="Click to view receipt slip or tick checkbox to bulk edit">
+                        <div class="flex items-center justify-between mb-0.5 px-0.5">
+                            <input type="checkbox" class="fee-status-cell-cb w-3.5 h-3.5 rounded border-emerald-400 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                                data-sel-key="${escapeHtml(selKey)}"
+                                data-student-id="${escapeHtml(s.id)}"
+                                data-item-key="${escapeHtml(i.key)}"
+                                data-item-name="${escapeHtml(normalizeFeeItemName(i.name))}"
+                                data-item-type="${escapeHtml(i.type || 'month')}"
+                                data-default-amount="${itemDefaultAmt}"
+                                data-sel-type="edit"
+                                data-payment-id="${escapeHtml(p.id || '')}"
+                                ${isSelected ? 'checked' : ''}
+                                title="Select to bulk edit">
+                            <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[9px] font-black border border-emerald-200">
+                                <i class="fas fa-check text-[7px]"></i> Paid
                             </span>
+                        </div>
+                        <div class="flex flex-col items-center justify-center">
                             <span class="text-[10px] font-mono font-bold text-emerald-950">${p.receiptNo ? `R:${escapeHtml(p.receiptNo)}` : `₹${Number(p.amount||0).toFixed(0)}`}</span>
                             <span class="text-[9px] text-emerald-600 font-medium">${new Date(p.paymentDate).toLocaleDateString('en-GB')}</span>
                         </div>
                     </td>`;
                 } else {
-                    const itemDefaultAmt = i.amount || defaultFee || 200;
-                    html += `<td class="p-1.5 text-center bg-white border-r border-slate-200 cursor-pointer hover:bg-blue-50/80 transition group"
-                        data-fee-action="pay-fee" data-student-id="${s.id}" data-item-key="${i.key}" data-item-name="${escapeHtml(i.name)}" data-item-type="${i.type || 'month'}" data-default-amount="${itemDefaultAmt}"
-                        title="Click to record fee payment for ${escapeHtml(s.name)}">
-                        <div class="flex flex-col items-center justify-center gap-1">
-                            <span class="text-[10px] font-bold text-rose-500 inline-flex items-center gap-0.5">
-                                <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span> Unpaid
-                            </span>
-                            <button type="button" class="px-2 py-0.5 rounded-md bg-blue-50 group-hover:bg-blue-600 group-hover:text-white text-blue-700 text-[10px] font-bold border border-blue-200 transition shadow-2xs">
+                    html += `<td class="p-1.5 text-center bg-white border-r border-slate-200 cursor-pointer hover:bg-blue-50/80 transition group relative ${selRing}"
+                        data-fee-action="pay-fee" data-student-id="${s.id}" data-item-key="${i.key}" data-item-name="${escapeHtml(normalizeFeeItemName(i.name))}" data-item-type="${i.type || 'month'}" data-default-amount="${itemDefaultAmt}"
+                        title="Click to record fee payment or tick checkbox for multi-entry">
+                        <div class="flex items-center justify-between mb-1 px-0.5">
+                            <input type="checkbox" class="fee-status-cell-cb w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                data-sel-key="${escapeHtml(selKey)}"
+                                data-student-id="${escapeHtml(s.id)}"
+                                data-item-key="${escapeHtml(i.key)}"
+                                data-item-name="${escapeHtml(normalizeFeeItemName(i.name))}"
+                                data-item-type="${escapeHtml(i.type || 'month')}"
+                                data-default-amount="${itemDefaultAmt}"
+                                data-sel-type="pay"
+                                ${isSelected ? 'checked' : ''}
+                                title="Select to collect together">
+                            <span class="text-[9px] font-bold text-rose-500">Unpaid</span>
+                        </div>
+                        <div class="flex flex-col items-center justify-center">
+                            <button type="button" class="w-full py-0.5 rounded-md bg-blue-50 group-hover:bg-blue-600 group-hover:text-white text-blue-700 text-[10px] font-bold border border-blue-200 transition shadow-2xs">
                                 Pay
                             </button>
                         </div>
@@ -2845,12 +2997,76 @@ const renderFeeTable = () => {
         });
     });
     cont.innerHTML = html + `</tbody></table>`;
+
+    // Attach checkbox listeners for Fee Status
+    cont.querySelectorAll('.fee-status-col-all-cb').forEach(colCb => {
+        colCb.addEventListener('click', (e) => e.stopPropagation());
+        colCb.addEventListener('change', () => {
+            const itemKey = colCb.dataset.itemKey;
+            const shouldCheck = colCb.checked;
+            const unpaidCbs = Array.from(cont.querySelectorAll(`.fee-status-cell-cb[data-item-key="${CSS.escape(itemKey)}"][data-sel-type="pay"]`));
+            const targetCbs = unpaidCbs.length > 0
+                ? unpaidCbs
+                : Array.from(cont.querySelectorAll(`.fee-status-cell-cb[data-item-key="${CSS.escape(itemKey)}"]`));
+
+            targetCbs.forEach(cb => {
+                cb.checked = shouldCheck;
+                const selKey = cb.dataset.selKey;
+                const td = cb.closest('td');
+                if (shouldCheck) {
+                    selectedFeeStatusCells.set(selKey, {
+                        studentId: cb.dataset.studentId,
+                        itemKey: cb.dataset.itemKey,
+                        itemName: cb.dataset.itemName,
+                        itemType: cb.dataset.itemType || 'month',
+                        defaultAmount: Number(cb.dataset.defaultAmount || defaultFee || 200),
+                        type: cb.dataset.selType,
+                        paymentId: cb.dataset.paymentId || ''
+                    });
+                    if (td) td.classList.add('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
+                } else {
+                    selectedFeeStatusCells.delete(selKey);
+                    if (td) td.classList.remove('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
+                }
+            });
+            updateFeeStatusBulkActionButtons();
+        });
+    });
+
+    cont.querySelectorAll('.fee-status-cell-cb').forEach(cb => {
+        cb.addEventListener('click', (e) => e.stopPropagation());
+        cb.addEventListener('change', () => {
+            const selKey = cb.dataset.selKey;
+            const td = cb.closest('td');
+            if (cb.checked) {
+                selectedFeeStatusCells.set(selKey, {
+                    studentId: cb.dataset.studentId,
+                    itemKey: cb.dataset.itemKey,
+                    itemName: cb.dataset.itemName,
+                    itemType: cb.dataset.itemType || 'month',
+                    defaultAmount: Number(cb.dataset.defaultAmount || defaultFee || 200),
+                    type: cb.dataset.selType,
+                    paymentId: cb.dataset.paymentId || ''
+                });
+                if (td) td.classList.add('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
+            } else {
+                selectedFeeStatusCells.delete(selKey);
+                if (td) td.classList.remove('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
+            }
+            updateFeeStatusBulkActionButtons();
+        });
+    });
+
+    updateFeeStatusBulkActionButtons();
 };
 
 window.renderFeeTable = renderFeeTable;
 
 // Fee Status table click delegation for interactive cells
 document.getElementById('fee-table-container')?.addEventListener('click', (e) => {
+    if (e.target.closest('.fee-status-cell-cb') || e.target.closest('.fee-status-col-all-cb')) {
+        return;
+    }
     const viewCell = e.target.closest('[data-fee-action="view-receipt"]');
     if (viewCell) {
         const paymentId = viewCell.dataset.paymentId;

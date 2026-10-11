@@ -135,6 +135,9 @@ const syncStaffAccessRecord = async (staffRecord = {}) => {
         email,
         isActive: staffRecord.isActive !== false,
         canCollect: staffRecord.canCollect !== false,
+        canAccessWorksheet: staffRecord.canAccessWorksheet !== false,
+        canManageResults: staffRecord.canManageResults === true,
+        canAccessAdmin: staffRecord.canAccessAdmin === true,
         name: staffRecord.name || '',
         role: staffRecord.role || '',
         type: staffRecord.type || '',
@@ -160,6 +163,9 @@ const rebuildStaffAccessIndex = async (staffRecords = []) => {
             email,
             isActive: staffRecord.isActive !== false,
             canCollect: staffRecord.canCollect !== false,
+            canAccessWorksheet: staffRecord.canAccessWorksheet !== false,
+            canManageResults: staffRecord.canManageResults === true,
+            canAccessAdmin: staffRecord.canAccessAdmin === true,
             name: staffRecord.name || '',
             role: staffRecord.role || '',
             type: staffRecord.type || '',
@@ -1538,14 +1544,182 @@ setTimeout(initAllAdminPhotoWidgets, 200);
 
 // --- 1. STAFF MANAGEMENT ---
 const CORE_STAFF_TYPES = ['Teacher', 'Management'];
-const getStaffTypeLabel = (type = '') => {
-    if (CORE_STAFF_TYPES.includes(type)) return type;
-    return getDirectoryCategories().find((category) => category.id === type)?.name || type || 'Staff';
-};
-const getStaffTypeOptions = () => [
-    ...CORE_STAFF_TYPES.map((type) => ({ value: type, label: type })),
-    ...getDirectoryCategories().map((category) => ({ value: category.id, label: category.name }))
+
+const DEFAULT_STAFF_CATEGORY_FIELDS = [
+    { id: 'core_photo', key: 'photo', label: 'Staff Photo (Upload & Mobile Camera)', type: 'photo', required: false, locked: false, order: 1 },
+    { id: 'core_name', key: 'name', label: 'Full Name', type: 'text', required: true, locked: true, order: 2 },
+    { id: 'core_role', key: 'role', label: 'Role / Designation / Subject', type: 'text', required: true, locked: false, order: 3 },
+    { id: 'core_phone', key: 'phone', label: 'Phone Number', type: 'phone', required: false, locked: false, order: 4 },
+    { id: 'core_email', key: 'email', label: 'Login Email (For Portal Login)', type: 'email', required: false, locked: false, order: 5 },
+    { id: 'core_password', key: 'password', label: 'Login Password', type: 'text', required: false, locked: false, order: 6 },
+    { id: 'core_msr', key: 'msr', label: 'MSR Number', type: 'text', required: false, locked: false, order: 7 },
+    { id: 'core_address', key: 'address', label: 'Permanent Address', type: 'textarea', required: false, locked: false, order: 8 }
 ];
+
+const getDefaultCoreCategoryDef = (typeId = 'Teacher') => ({
+    id: typeId,
+    name: typeId,
+    order: typeId === 'Teacher' ? 1 : 2,
+    showPublic: true,
+    isCore: true,
+    fields: DEFAULT_STAFF_CATEGORY_FIELDS.map((f) => ({ ...f }))
+});
+
+const getAllStaffCategories = () => {
+    const rawList = Array.isArray(webContent.directoryCategories) ? webContent.directoryCategories : [];
+    const normalizedMap = new Map();
+
+    // Ensure Teacher and Management always exist as editable categories
+    CORE_STAFF_TYPES.forEach((coreId) => {
+        const saved = rawList.find((c) => c.id === coreId || String(c.name || '').trim().toLowerCase() === coreId.toLowerCase());
+        if (saved) {
+            normalizedMap.set(coreId, {
+                ...normalizeDirectoryCategory(saved),
+                id: coreId,
+                name: String(saved.name || coreId).trim() || coreId,
+                isCore: true
+            });
+        } else {
+            normalizedMap.set(coreId, getDefaultCoreCategoryDef(coreId));
+        }
+    });
+
+    // Include custom categories
+    rawList.forEach((item) => {
+        if (!item) return;
+        const isCoreMatch = CORE_STAFF_TYPES.some((coreId) => item.id === coreId || String(item.name || '').trim().toLowerCase() === coreId.toLowerCase());
+        if (isCoreMatch) return;
+        const norm = normalizeDirectoryCategory(item);
+        normalizedMap.set(norm.id, { ...norm, isCore: false });
+    });
+
+    return Array.from(normalizedMap.values()).sort((a, b) => a.order - b.order);
+};
+
+const getActiveFieldsForCategory = (categoryId = 'Teacher') => {
+    const allCats = getAllStaffCategories();
+    const matched = allCats.find((c) => c.id === categoryId) || getDefaultCoreCategoryDef(categoryId);
+    const fields = Array.isArray(matched.fields) && matched.fields.length
+        ? [...matched.fields].sort((a, b) => (Number(a.order) || 1) - (Number(b.order) || 1))
+        : DEFAULT_STAFF_CATEGORY_FIELDS;
+    return fields;
+};
+
+const getStaffTypeLabel = (type = '') => {
+    const match = getAllStaffCategories().find((category) => category.id === type);
+    if (match) return match.name;
+    if (CORE_STAFF_TYPES.includes(type)) return type;
+    return type || 'Staff';
+};
+
+const getStaffTypeOptions = () => getAllStaffCategories().map((category) => ({
+    value: category.id,
+    label: category.name
+}));
+
+const captureDynamicStaffFormValues = (prefix = 'st') => {
+    const container = document.getElementById(`${prefix}-dynamic-fields-container`);
+    if (!container) return {};
+    const values = {};
+    container.querySelectorAll('[data-staff-field-key]').forEach((el) => {
+        const key = el.dataset.staffFieldKey;
+        if (key) values[key] = el.value || '';
+    });
+    return values;
+};
+
+const renderDynamicStaffFormFields = (prefix = 'st', categoryId = 'Teacher', initialValues = null) => {
+    const container = document.getElementById(`${prefix}-dynamic-fields-container`);
+    if (!container) return;
+    const preserved = initialValues !== null ? initialValues : captureDynamicStaffFormValues(prefix);
+    const fields = getActiveFieldsForCategory(categoryId);
+    const catLabel = getStaffTypeLabel(categoryId);
+    const badgeEl = document.getElementById(`${prefix}-active-category-badge`);
+    if (badgeEl) badgeEl.textContent = `Category: ${catLabel} (${fields.length} Fields)`;
+
+    const photoField = fields.find((f) => f.key === 'photo' || f.type === 'photo');
+    const otherFields = fields.filter((f) => f.key !== 'photo' && f.type !== 'photo');
+
+    let html = '';
+
+    if (photoField) {
+        const photoVal = String(preserved.photo || '');
+        const inputId = `${prefix}-photo`;
+        const previewId = `${prefix}-photo-preview`;
+        const placeholderId = `${prefix}-photo-placeholder`;
+        const removeBtnId = `${prefix}-remove-btn`;
+        const fileInputId = `${prefix}-file-input`;
+        const cameraBtnId = `${prefix}-camera-btn`;
+        const uploadBtnId = `${prefix}-upload-btn`;
+
+        html += `
+        <div class="flex flex-col sm:flex-row gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200 items-center">
+            <div class="relative w-20 h-20 rounded-full border-2 border-slate-200 overflow-hidden bg-slate-100 flex items-center justify-center shrink-0 shadow-inner">
+                <img id="${previewId}" src="${escapeHtml(photoVal)}" class="w-full h-full object-cover ${photoVal ? '' : 'hidden'}" alt="Staff Profile Preview">
+                <i id="${placeholderId}" class="fas fa-user text-3xl text-slate-400 ${photoVal ? 'hidden' : ''}"></i>
+            </div>
+            <div class="flex-1 text-center sm:text-left space-y-1.5">
+                <label class="block text-xs font-black text-slate-700">${escapeHtml(photoField.label || 'Staff Photo')} (Max 50KB) ${photoField.required ? '<span class="mandatory-star">*</span>' : ''}</label>
+                <div class="flex flex-wrap gap-2 justify-center sm:justify-start">
+                    <button type="button" id="${cameraBtnId}" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-md font-bold text-xs flex items-center gap-1 shadow-sm transition-all"><i class="fas fa-camera"></i> Camera</button>
+                    <button type="button" id="${uploadBtnId}" class="px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-md font-bold text-xs flex items-center gap-1 shadow-sm transition-all"><i class="fas fa-upload"></i> Upload</button>
+                    <button type="button" id="${removeBtnId}" class="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 rounded-md font-bold text-xs transition-all ${photoVal ? '' : 'hidden'}">Remove</button>
+                </div>
+                <input type="hidden" id="${inputId}" data-staff-field-key="photo" data-staff-field-required="${photoField.required ? 'true' : 'false'}" data-staff-field-label="${escapeHtml(photoField.label || 'Photo')}" value="${escapeHtml(photoVal)}">
+                <input type="file" id="${fileInputId}" accept="image/*" class="hidden">
+            </div>
+        </div>`;
+    }
+
+    if (otherFields.length) {
+        html += `<div class="grid grid-cols-1 md:grid-cols-2 gap-4">`;
+        otherFields.forEach((field, idx) => {
+            const key = field.key;
+            const val = String(preserved[key] ?? (preserved.customFields?.[key] ?? ''));
+            const reqStar = field.required ? ' <span class="mandatory-star">*</span>' : '';
+            const fieldId = `${prefix}-field-${key}`;
+            const isFullWidth = field.type === 'textarea' || key === 'address';
+            const isCredentialField = key === 'email' || key === 'password';
+            const wrapperClass = isFullWidth
+                ? 'md:col-span-2'
+                : isCredentialField
+                    ? 'bg-blue-50/70 p-3 rounded-xl border border-blue-100'
+                    : '';
+
+            if (field.type === 'textarea' || key === 'address') {
+                html += `
+                <div class="${wrapperClass}">
+                    <label for="${fieldId}" class="block text-sm font-semibold text-gray-800 mb-1">${idx + 2}. ${escapeHtml(field.label)}${reqStar}</label>
+                    <textarea id="${fieldId}" data-staff-field-key="${escapeHtml(key)}" data-staff-field-required="${field.required ? 'true' : 'false'}" data-staff-field-label="${escapeHtml(field.label)}" rows="2" class="w-full p-2.5 border border-gray-300 rounded-lg bg-white" placeholder="${escapeHtml(field.label)}">${escapeHtml(val)}</textarea>
+                </div>`;
+            } else {
+                const inputType = field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'email' ? 'email' : 'text';
+                const iconHtml = key === 'email' ? '<i class="fas fa-envelope text-blue-600 mr-1"></i>' : key === 'password' ? '<i class="fas fa-key text-blue-600 mr-1"></i>' : '';
+                html += `
+                <div class="${wrapperClass}">
+                    <label for="${fieldId}" class="block text-sm font-semibold ${isCredentialField ? 'text-blue-900' : 'text-gray-800'} mb-1">${iconHtml}${idx + 2}. ${escapeHtml(field.label)}${reqStar}</label>
+                    <input type="${inputType}" id="${fieldId}" data-staff-field-key="${escapeHtml(key)}" data-staff-field-required="${field.required ? 'true' : 'false'}" data-staff-field-label="${escapeHtml(field.label)}" value="${escapeHtml(val)}" class="w-full p-2.5 border border-gray-300 rounded-lg bg-white" placeholder="${escapeHtml(field.label)}">
+                </div>`;
+            }
+        });
+        html += `</div>`;
+    }
+
+    container.innerHTML = html;
+
+    if (photoField) {
+        setupAdminPhotoWidget(
+            `${prefix}-photo`,
+            `${prefix}-photo-preview`,
+            `${prefix}-photo-placeholder`,
+            `${prefix}-remove-btn`,
+            `${prefix}-file-input`,
+            `${prefix}-camera-btn`,
+            `${prefix}-upload-btn`
+        );
+    }
+};
+
 const renderStaffTypeControls = () => {
     const options = getStaffTypeOptions();
     ['st-type', 'e-st-type'].forEach((id) => {
@@ -1553,7 +1727,11 @@ const renderStaffTypeControls = () => {
         if (!select) return;
         const previous = select.value;
         select.innerHTML = options.map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join('');
-        if (options.some((option) => option.value === previous)) select.value = previous;
+        if (options.some((option) => option.value === previous)) {
+            select.value = previous;
+        } else if (options.length) {
+            select.value = options[0].value;
+        }
     });
     const filter = document.getElementById('staff-filter-type');
     if (filter) {
@@ -1561,40 +1739,103 @@ const renderStaffTypeControls = () => {
         filter.innerHTML = '<option value="all">All Types</option>' + options.map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join('');
         filter.value = options.some((option) => option.value === previous) ? previous : 'all';
     }
+    const currentAddType = document.getElementById('st-type')?.value || 'Teacher';
+    renderDynamicStaffFormFields('st', currentAddType);
+};
+
+document.getElementById('st-type')?.addEventListener('change', (e) => {
+    renderDynamicStaffFormFields('st', e.target.value);
+});
+document.getElementById('e-st-type')?.addEventListener('change', (e) => {
+    renderDynamicStaffFormFields('e-st', e.target.value);
+});
+
+const extractAndValidateStaffForm = (prefix = 'st') => {
+    const type = document.getElementById(`${prefix}-type`)?.value || 'Teacher';
+    const container = document.getElementById(`${prefix}-dynamic-fields-container`);
+    const fieldElements = Array.from(container?.querySelectorAll('[data-staff-field-key]') || []);
+    const values = {};
+    const customFields = {};
+    const standardKeys = new Set(['name', 'role', 'phone', 'email', 'password', 'msr', 'address', 'photo']);
+
+    for (const el of fieldElements) {
+        const key = el.dataset.staffFieldKey;
+        const required = el.dataset.staffFieldRequired === 'true';
+        const label = el.dataset.staffFieldLabel || key;
+        const val = String(el.value || '').trim();
+        if (required && !val) {
+            alert(`"${label}" നിർബന്ധമായും പൂരിപ്പിക്കണം! (${label} is required)`);
+            el.focus?.();
+            return null;
+        }
+        values[key] = val;
+        if (!standardKeys.has(key)) {
+            customFields[key] = val;
+        }
+    }
+
+    const name = String(values.name || '').trim();
+    if (!type || !name) {
+        alert('Type and Full Name are mandatory!');
+        return null;
+    }
+
+    const isActive = document.getElementById(`${prefix}-active`)?.checked !== false;
+    const showPublic = document.getElementById(`${prefix}-show-public`)?.checked !== false;
+    const canCollect = document.getElementById(`${prefix}-can-collect`)?.checked === true;
+    const canAccessWorksheet = document.getElementById(`${prefix}-can-worksheet`)?.checked !== false;
+    const canManageResults = document.getElementById(`${prefix}-can-manage-results`)?.checked === true;
+    const canAccessAdmin = document.getElementById(`${prefix}-can-access-admin`)?.checked === true;
+    const displayOrder = Math.max(1, Number(document.getElementById(`${prefix}-display-order`)?.value || 999));
+
+    const hasAnyPortalAccess = canCollect || canAccessWorksheet || canManageResults || canAccessAdmin;
+    const passwordInputExists = fieldElements.some((el) => el.dataset.staffFieldKey === 'password');
+    if (hasAnyPortalAccess && passwordInputExists && values.email && !values.password) {
+        alert('Portal access നൽകുമ്പോൾ Login Password കൂടി നൽകുക.');
+        return null;
+    }
+
+    return {
+        type,
+        name,
+        role: String(values.role || '').trim(),
+        phone: String(values.phone || '').trim(),
+        email: String(values.email || '').trim(),
+        password: String(values.password || '').trim(),
+        msr: String(values.msr || '').trim(),
+        address: String(values.address || '').trim(),
+        photo: String(values.photo || '').trim(),
+        customFields,
+        isActive,
+        showPublic,
+        canCollect,
+        canAccessWorksheet,
+        canManageResults,
+        canAccessAdmin,
+        displayOrder,
+        updatedAt: Date.now()
+    };
 };
 
 document.getElementById('add-staff-btn').addEventListener('click', async () => {
     if(!requirePermission('staff.manage')) return;
-    const type = document.getElementById('st-type').value, name = document.getElementById('st-name').value.trim(), role = document.getElementById('st-role').value.trim();
-    if(!type || !name || !role) return alert("Type, Name and Role are mandatory!");
-    if (document.getElementById('st-can-collect').checked && !document.getElementById('st-password').value.trim()) {
-        return alert("Collection access നൽകിയാൽ login password നിർബന്ധമാണ്.");
-    }
+    const staffRecord = extractAndValidateStaffForm('st');
+    if (!staffRecord) return;
     if(!confirm("പുതിയ സ്റ്റാഫിനെ ചേർക്കട്ടെ?")) return;
     const btn = document.getElementById('add-staff-btn'); btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...';
 
-    const staffRecord = {
-        type, name, role, phone: document.getElementById('st-phone').value.trim(), email: document.getElementById('st-email').value.trim(),
-        password: document.getElementById('st-password').value.trim(),
-        msr: document.getElementById('st-msr').value.trim(), address: document.getElementById('st-address').value.trim(),
-        photo: document.getElementById('st-photo').value.trim(), isActive: document.getElementById('st-active').checked, canCollect: document.getElementById('st-can-collect').checked, canManageResults: document.getElementById('st-can-manage-results').checked,
-        showPublic: document.getElementById('st-show-public').checked,
-        displayOrder: Math.max(1, Number(document.getElementById('st-display-order').value || 999))
-    };
     const staffDoc = await addDoc(collection(db, `${BASE_PATH}/staff`), staffRecord);
     await syncStaffAccessRecord(staffRecord);
-    await logAuditEvent({ category: 'security', action: 'staff.create', entityType: 'staff', entityId: staffDoc.id, message: `Staff added: ${name}.` });
+    await logAuditEvent({ category: 'security', action: 'staff.create', entityType: 'staff', entityId: staffDoc.id, message: `Staff added: ${staffRecord.name}.` });
     alert("Staff Added Successfully!");
-    ['st-name', 'st-role', 'st-phone', 'st-email', 'st-password', 'st-msr', 'st-address', 'st-photo'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.value = '';
-    });
-    updateAdminPhotoWidgetPreview('', 'st-photo-preview', 'st-photo-placeholder', 'st-remove-btn', 'st-photo');
+    renderDynamicStaffFormFields('st', staffRecord.type, {});
     document.getElementById('st-display-order').value = '999';
     document.getElementById('st-active').checked = true;
-    document.getElementById('st-can-collect').checked = true;
-    document.getElementById('st-can-manage-results').checked = false;
     document.getElementById('st-show-public').checked = true;
+    document.getElementById('st-can-collect').checked = true;
+    document.getElementById('st-can-worksheet').checked = true;
+    document.getElementById('st-can-manage-results').checked = false;
+    document.getElementById('st-can-access-admin').checked = false;
     btn.disabled = false; btn.innerHTML = '<i class="fas fa-plus mr-2"></i> Add Staff';
 });
 
@@ -1622,6 +1863,17 @@ const renderStaffList = () => {
     const buildHTML = (list, isAct) => list.map((staffMember) => {
         const safePhoto = resolveSafePhotoUrl(staffMember.photo, 'https://via.placeholder.com/60?text=Staff');
         const typeLabel = getStaffTypeLabel(staffMember.type);
+        const categoryFields = getActiveFieldsForCategory(staffMember.type);
+        const customBadges = categoryFields
+            .filter((f) => !['name', 'role', 'photo', 'email', 'password'].includes(f.key))
+            .map((f) => {
+                const val = staffMember[f.key] ?? staffMember.customFields?.[f.key] ?? '';
+                if (!val) return '';
+                return `<span class="text-[11px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded font-medium">${escapeHtml(f.label)}: ${escapeHtml(String(val))}</span>`;
+            })
+            .filter(Boolean)
+            .join('');
+
         return `
             <div class="flex flex-col sm:flex-row justify-between p-4 bg-white border border-gray-200 rounded-xl shadow-sm items-start sm:items-center gap-4 transition hover:shadow-md mb-2">
                 <div class="flex gap-4 items-center w-full sm:w-auto">
@@ -1629,9 +1881,19 @@ const renderStaffList = () => {
                     <div>
                         <b class="text-gray-900 text-lg">${escapeHtml(staffMember.name || '--')}</b>
                         <div class="text-sm text-gray-500 font-medium mt-0.5"><i class="fas fa-briefcase text-gray-400 mr-1"></i> ${escapeHtml(staffMember.role || '--')}</div>
-                        <div class="text-[11px] text-slate-600 bg-slate-50 px-2 py-0.5 rounded mt-1 inline-block font-bold">${escapeHtml(typeLabel)}</div>
-                        ${staffMember.email ? `<div class="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded mt-1 inline-block font-mono">Email: ${escapeHtml(staffMember.email)}</div>` : ''}
-                        <div class="mt-2 flex flex-wrap gap-2">${staffMember.isActive ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Active</span>' : '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">Inactive</span>'}${staffMember.showPublic !== false ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200">Public</span>' : '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">Hidden Public</span>'}${staffMember.canCollect ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">Collection Access</span>' : '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">No Collection Access</span>'}${staffMember.canManageResults ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">Result Access</span>' : ''}</div>
+                        <div class="flex flex-wrap gap-1.5 mt-1 items-center">
+                            <span class="text-[11px] text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-bold">${escapeHtml(typeLabel)}</span>
+                            ${staffMember.email ? `<span class="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-mono">Email: ${escapeHtml(staffMember.email)}</span>` : ''}
+                            ${customBadges}
+                        </div>
+                        <div class="mt-2 flex flex-wrap gap-1.5">
+                            ${staffMember.isActive ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200"><i class="fas fa-check-circle mr-1"></i>Active</span>' : '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">Inactive</span>'}
+                            ${staffMember.showPublic !== false ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200"><i class="fas fa-globe mr-1"></i>Public Page</span>' : '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">Hidden Public</span>'}
+                            ${staffMember.canCollect !== false ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">1. Collection</span>' : ''}
+                            ${staffMember.canAccessWorksheet !== false ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">2. Worksheet</span>' : ''}
+                            ${staffMember.canManageResults ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">3. Result</span>' : ''}
+                            ${staffMember.canAccessAdmin ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">4. Admin</span>' : ''}
+                        </div>
                     </div>
                 </div>
                 <div class="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
@@ -1646,7 +1908,8 @@ const renderStaffList = () => {
     const activeManagement = sortByDisplayOrder(active.filter((s) => s.type === 'Management'));
     actTCont.innerHTML = activeTeachers.length ? buildHTML(activeTeachers, true) : '<p class="text-sm text-gray-500 italic p-2">No active teachers found.</p>';
     actMCont.innerHTML = activeManagement.length ? buildHTML(activeManagement, true) : '<p class="text-sm text-gray-500 italic p-2">No active management found.</p>';
-    const categorySections = getDirectoryCategories().map((category) => {
+    const customCategories = getAllStaffCategories().filter((c) => !CORE_STAFF_TYPES.includes(c.id));
+    const categorySections = customCategories.map((category) => {
         const rows = sortByDisplayOrder(active.filter((s) => s.type === category.id));
         return `<div class="card p-5 rounded-xl shadow-sm border border-emerald-100"><h2 class="text-xl font-bold mb-4 text-emerald-800 border-b border-emerald-100 pb-2"><i class="fas fa-users mr-2"></i>${escapeHtml(category.name)}</h2>${rows.length ? buildHTML(rows, true) : '<p class="text-sm text-gray-500 italic p-2">No active profiles in this category.</p>'}</div>`;
     }).join('');
@@ -1680,17 +1943,30 @@ window.openEditStaff = (id) => {
     const s = allStaff.find(st => st.id === id); if(!s) return;
     editingStaffId = s.id;
     renderStaffTypeControls();
-    document.getElementById('e-st-type').value = s.type||'Teacher'; document.getElementById('e-st-name').value = s.name||'';
-    document.getElementById('e-st-role').value = s.role||''; document.getElementById('e-st-phone').value = s.phone||'';
-    document.getElementById('e-st-email').value = s.email||''; document.getElementById('e-st-password').value = s.password||'';
-    document.getElementById('e-st-msr').value = s.msr||'';
-    document.getElementById('e-st-addr').value = s.address||'';
-    updateAdminPhotoWidgetPreview(s.photo || '', 'e-st-photo-preview', 'e-st-photo-placeholder', 'e-st-remove-btn', 'e-st-photo');
+    const staffType = s.type || 'Teacher';
+    const typeSelect = document.getElementById('e-st-type');
+    if (typeSelect) typeSelect.value = staffType;
+
+    const initialValues = {
+        ...(s.customFields || {}),
+        name: s.name || '',
+        role: s.role || '',
+        phone: s.phone || '',
+        email: s.email || '',
+        password: s.password || '',
+        msr: s.msr || '',
+        address: s.address || '',
+        photo: s.photo || ''
+    };
+    renderDynamicStaffFormFields('e-st', staffType, initialValues);
+
     document.getElementById('e-st-display-order').value = Math.max(1, Number(s.displayOrder || 999));
-    document.getElementById('e-st-active').checked = s.isActive;
-    document.getElementById('e-st-can-collect').checked = s.canCollect !== false;
-    document.getElementById('e-st-can-manage-results').checked = s.canManageResults === true;
+    document.getElementById('e-st-active').checked = s.isActive !== false;
     document.getElementById('e-st-show-public').checked = s.showPublic !== false;
+    document.getElementById('e-st-can-collect').checked = s.canCollect !== false;
+    document.getElementById('e-st-can-worksheet').checked = s.canAccessWorksheet !== false;
+    document.getElementById('e-st-can-manage-results').checked = s.canManageResults === true;
+    document.getElementById('e-st-can-access-admin').checked = s.canAccessAdmin === true;
     document.getElementById('edit-staff-popup').classList.remove('hidden'); document.getElementById('edit-staff-popup').classList.add('flex');
 };
 document.getElementById('manage-staff-page').addEventListener('click', (e) => {
@@ -1707,27 +1983,25 @@ document.getElementById('staff-filter-type')?.addEventListener('change', renderS
 document.getElementById('edit-staff-cancel').onclick = () => document.getElementById('edit-staff-popup').classList.add('hidden');
 document.getElementById('edit-staff-update').onclick = async () => {
     if(!requirePermission('staff.manage')) return;
-    const type = document.getElementById('e-st-type').value, name = document.getElementById('e-st-name').value.trim(), role = document.getElementById('e-st-role').value.trim();
-    if(!type || !name || !role) return alert("Type, Name and Role are mandatory!");
-    if (document.getElementById('e-st-can-collect').checked && !document.getElementById('e-st-password').value.trim()) {
-        return alert("Collection access enabled ആണെങ്കിൽ password നൽകണം.");
-    }
+    const nextStaffRecord = extractAndValidateStaffForm('e-st');
+    if (!nextStaffRecord) return;
     if(!confirm("മാറ്റങ്ങൾ സേവ് ചെയ്യട്ടെ?")) return;
     const existingStaff = allStaff.find((staffMember) => staffMember.id === editingStaffId) || {};
-    const nextStaffRecord = {
-        type, name, role, email: document.getElementById('e-st-email').value.trim(), phone: document.getElementById('e-st-phone').value.trim(),
-        password: document.getElementById('e-st-password').value.trim(),
-        msr: document.getElementById('e-st-msr').value.trim(), photo: document.getElementById('e-st-photo').value.trim(),
-        address: document.getElementById('e-st-addr').value.trim(), isActive: document.getElementById('e-st-active').checked, canCollect: document.getElementById('e-st-can-collect').checked, canManageResults: document.getElementById('e-st-can-manage-results').checked,
-        showPublic: document.getElementById('e-st-show-public').checked,
-        displayOrder: Math.max(1, Number(document.getElementById('e-st-display-order').value || 999))
+    const mergedRecord = {
+        ...existingStaff,
+        ...nextStaffRecord,
+        customFields: {
+            ...(existingStaff.customFields || {}),
+            ...(nextStaffRecord.customFields || {})
+        }
     };
-    await updateDoc(doc(db, `${BASE_PATH}/staff`, editingStaffId), nextStaffRecord);
-    if (existingStaff.email && normalizeEmail(existingStaff.email) !== normalizeEmail(nextStaffRecord.email)) {
+    delete mergedRecord.id;
+    await updateDoc(doc(db, `${BASE_PATH}/staff`, editingStaffId), mergedRecord);
+    if (existingStaff.email && normalizeEmail(existingStaff.email) !== normalizeEmail(mergedRecord.email)) {
         await removeStaffAccessRecord(existingStaff.email);
     }
-    await syncStaffAccessRecord(nextStaffRecord);
-    await logAuditEvent({ category: 'security', action: 'staff.update', entityType: 'staff', entityId: editingStaffId, message: `Staff updated: ${name}.` });
+    await syncStaffAccessRecord(mergedRecord);
+    await logAuditEvent({ category: 'security', action: 'staff.update', entityType: 'staff', entityId: editingStaffId, message: `Staff updated: ${mergedRecord.name}.` });
     document.getElementById('edit-staff-popup').classList.add('hidden');
 };
 
@@ -4446,25 +4720,29 @@ const renderDirectoryEntries = () => {
 let currentEditingCategoryDraftFields = [];
 
 const renderDirectoryCategories = () => {
-    const categories = getDirectoryCategories();
+    const categories = getAllStaffCategories();
     const list = document.getElementById('dir-categories-list');
     if (!list) return;
     list.innerHTML = categories.length
-        ? categories.map((category) => `
-            <div class="inline-flex items-center gap-2 bg-white border border-emerald-200 text-emerald-900 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs hover:border-emerald-300 transition">
-                <span class="font-bold truncate max-w-[130px]">${escapeHtml(category.name)}</span>
+        ? categories.map((category) => {
+            const isCore = CORE_STAFF_TYPES.includes(category.id);
+            return `
+            <div class="inline-flex items-center gap-2 bg-white border ${isCore ? 'border-blue-200 text-blue-950' : 'border-emerald-200 text-emerald-900'} px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs hover:border-emerald-300 transition">
+                <span class="font-bold truncate max-w-[140px]">${escapeHtml(category.name)}</span>
+                ${isCore ? '<span class="text-[9px] uppercase tracking-wider bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-bold">Default</span>' : ''}
                 <span class="text-[10px] text-gray-400 font-mono">#${category.order}</span>
                 <span class="text-[10px] px-1.5 py-0.5 rounded font-normal ${category.showPublic ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}">${category.showPublic ? 'Public' : 'Hidden'}</span>
                 <div class="flex items-center gap-1 border-l pl-2 border-emerald-100">
-                    <button type="button" class="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50 dir-cat-edit-btn transition" data-id="${category.id}" title="Edit category & input fields">
+                    <button type="button" class="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50 dir-cat-edit-btn transition" data-id="${escapeHtml(category.id)}" title="Edit category & input fields">
                         <i class="fas fa-pencil-alt text-xs pointer-events-none"></i>
                     </button>
-                    <button type="button" class="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 dir-cat-delete-btn transition" data-id="${category.id}" title="Delete category">
+                    ${!isCore ? `
+                    <button type="button" class="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 dir-cat-delete-btn transition" data-id="${escapeHtml(category.id)}" title="Delete category">
                         <i class="fas fa-trash-alt text-xs pointer-events-none"></i>
-                    </button>
+                    </button>` : ''}
                 </div>
             </div>
-        `).join('')
+        `}).join('')
         : '<p class="text-xs text-emerald-700 italic py-1">No categories created yet.</p>';
     renderDirectoryCategoryOptions();
     renderDirectoryFields();
@@ -4478,7 +4756,7 @@ const renderDirectoryCategories = () => {
 };
 
 const openEditStaffCategory = (categoryId) => {
-    const categories = getDirectoryCategories();
+    const categories = getAllStaffCategories();
     const category = categories.find((c) => c.id === categoryId);
     if (!category) return;
     
@@ -4488,14 +4766,7 @@ const openEditStaffCategory = (categoryId) => {
     document.getElementById('edit-staff-cat-public').checked = category.showPublic !== false;
 
     // Available baseline fields:
-    const standardFields = [
-        { id: 'core_name', key: 'name', label: 'Full Name', type: 'text', locked: true, order: 1 },
-        { id: 'core_role', key: 'role', label: 'Role / Designation / Subject', type: 'text', locked: false, order: 2 },
-        { id: 'core_photo', key: 'photo', label: 'Staff Photo (Upload & Mobile Camera)', type: 'photo', locked: false, order: 3 },
-        { id: 'core_phone', key: 'phone', label: 'Phone Number', type: 'phone', locked: false, order: 4 },
-        { id: 'core_address', key: 'address', label: 'Permanent Address', type: 'textarea', locked: false, order: 5 },
-        { id: 'core_email', key: 'email', label: 'Login Email (For Cashier Auth)', type: 'email', locked: false, order: 6 }
-    ];
+    const standardFields = DEFAULT_STAFF_CATEGORY_FIELDS.map((f) => ({ ...f }));
 
     const activeKeys = new Set((category.fields || []).map((f) => f.key));
     
@@ -4504,7 +4775,7 @@ const openEditStaffCategory = (categoryId) => {
         return {
             ...std,
             label: existing?.label || std.label,
-            required: std.key === 'name' ? true : Boolean(existing?.required),
+            required: std.key === 'name' ? true : Boolean(existing ? existing.required : std.required),
             active: std.key === 'name' ? true : activeKeys.has(std.key)
         };
     });
@@ -4533,6 +4804,7 @@ const openEditStaffCategory = (categoryId) => {
 const renderEditStaffCategoryFieldsList = () => {
     const container = document.getElementById('edit-staff-cat-fields-list');
     if (!container) return;
+    const standardKeys = new Set(DEFAULT_STAFF_CATEGORY_FIELDS.map((f) => f.key));
     container.innerHTML = currentEditingCategoryDraftFields.map((field, idx) => `
         <div class="flex items-center justify-between p-2 rounded-lg bg-white border border-gray-200 gap-2">
             <label class="inline-flex items-center gap-2 cursor-pointer flex-1 min-w-0">
@@ -4549,7 +4821,7 @@ const renderEditStaffCategoryFieldsList = () => {
                         <span>Required</span>
                     </label>
                 ` : '<span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">Core ID</span>'}
-                ${!['name', 'role', 'photo', 'phone', 'address', 'email'].includes(field.key) ? `
+                ${!standardKeys.has(field.key) ? `
                     <button type="button" class="text-red-500 hover:text-red-700 p-1 edit-field-del-custom-btn" data-idx="${idx}" title="Remove custom field">
                         <i class="fas fa-trash-alt text-xs pointer-events-none"></i>
                     </button>
@@ -4574,13 +4846,18 @@ const updateDirectoryCategories = async (categories = []) => {
 };
 
 document.getElementById('dir-cat-add-btn')?.addEventListener('click', async () => {
-    if(!requirePermission('website.manage')) return;
+    if(!requirePermission('website.manage') && !requirePermission('staff.manage')) return;
     const name = document.getElementById('dir-cat-name')?.value?.trim() || '';
     const order = Number(document.getElementById('dir-cat-order')?.value || 1);
     const showPublic = document.getElementById('dir-cat-public')?.checked !== false;
     if (!name) return alert('Enter a category name.');
-    const categories = getDirectoryCategories();
-    categories.push(normalizeDirectoryCategory({ name, order, showPublic, fields: [] }));
+    const categories = getAllStaffCategories();
+    categories.push(normalizeDirectoryCategory({
+        name,
+        order,
+        showPublic,
+        fields: DEFAULT_STAFF_CATEGORY_FIELDS.map((f) => ({ ...f }))
+    }));
     await updateDirectoryCategories(categories);
     document.getElementById('dir-cat-name').value = '';
 });
@@ -4593,9 +4870,12 @@ document.getElementById('dir-categories-list')?.addEventListener('click', async 
         return;
     }
     if (deleteBtn) {
-        if (!confirm('Delete this category and its entries?')) return;
         const targetId = deleteBtn.dataset.id;
-        const categories = getDirectoryCategories();
+        if (CORE_STAFF_TYPES.includes(targetId)) {
+            return alert('Default categories (Teacher & Management) cannot be deleted. You can edit their fields instead.');
+        }
+        if (!confirm('Delete this category and its entries?')) return;
+        const categories = getAllStaffCategories();
         const next = categories.filter((item) => item.id !== targetId);
         await updateDirectoryCategories(next);
         const deleteTargets = publicDirectoryEntries.filter((entry) => entry.categoryId === targetId);
@@ -4659,7 +4939,7 @@ document.getElementById('edit-staff-cat-add-field-btn')?.addEventListener('click
 });
 
 document.getElementById('edit-staff-cat-save-btn')?.addEventListener('click', async () => {
-    if (!requirePermission('website.manage')) return;
+    if (!requirePermission('website.manage') && !requirePermission('staff.manage')) return;
     const categoryId = document.getElementById('edit-staff-cat-id')?.value;
     const name = document.getElementById('edit-staff-cat-name')?.value?.trim();
     const order = Number(document.getElementById('edit-staff-cat-order')?.value || 1);
@@ -4678,9 +4958,10 @@ document.getElementById('edit-staff-cat-save-btn')?.addEventListener('click', as
             locked: f.key === 'name'
         }));
 
-    const categories = getDirectoryCategories();
+    const categories = getAllStaffCategories();
     const next = categories.map((c) => c.id === categoryId ? {
         ...c,
+        id: categoryId,
         name,
         order,
         showPublic,
@@ -5338,25 +5619,42 @@ onAuthStateChanged(auth, async (user) => {
         const wantsResultsTab = false;
 
         if (!matchingAdmin) {
-            if (!wantsResultsTab) {
+            const staffEmailFromSession = normalizeEmail(window.AppSession?.getStaffEmail?.() || currentAdminEmail || '');
+            let authorizedStaffAdmin = null;
+            if (staffEmailFromSession) {
+                const staffSnap = await getDocs(query(collection(db, `${BASE_PATH}/staff`), where('email', '==', staffEmailFromSession)));
+                const staffRow = staffSnap.docs[0]?.data() || null;
+                if (staffRow && staffRow.isActive !== false && staffRow.canAccessAdmin === true) {
+                    authorizedStaffAdmin = staffRow;
+                }
+            }
+            if (!authorizedStaffAdmin && window.AppSession?.getRole?.() === 'admin') {
+                // Allowed via staff admin session from index login
+                currentAdminRole = 'super_admin';
+            } else if (authorizedStaffAdmin) {
+                currentAdminRole = 'super_admin';
+                currentAdminEmail = staffEmailFromSession;
+                window.AppSession?.startAdmin();
+            } else if (!wantsResultsTab) {
                 alert("അനധികൃത പ്രവേശനം! നിങ്ങൾക്കീ പേജിൽ പ്രവേശിക്കാൻ അനുമതിയില്ല.");
                 await window.AppSession?.clearAll({ purgeClientData: true });
                 await signOut(auth);
                 window.location.href = 'index.html';
                 return;
+            } else {
+                const staffSnap = await getDocs(query(collection(db, `${BASE_PATH}/staff`), where('email', '==', currentAdminEmail)));
+                const staffRow = staffSnap.docs[0]?.data() || null;
+                if (!staffRow || staffRow.isActive === false || staffRow.canManageResults !== true) {
+                    alert("Result page access denied. Ask admin to enable your staff/collection access.");
+                    await window.AppSession?.clearAll({ purgeClientData: true });
+                    await signOut(auth);
+                    window.location.href = 'index.html';
+                    return;
+                }
+                isResultOperatorSession = true;
+                currentAdminRole = 'result_operator';
+                window.AppSession?.startStaff(staffRow.name || 'Result Operator', currentAdminEmail);
             }
-            const staffSnap = await getDocs(query(collection(db, `${BASE_PATH}/staff`), where('email', '==', currentAdminEmail)));
-            const staffRow = staffSnap.docs[0]?.data() || null;
-            if (!staffRow || staffRow.isActive === false || staffRow.canManageResults !== true) {
-                alert("Result page access denied. Ask admin to enable your staff/collection access.");
-                await window.AppSession?.clearAll({ purgeClientData: true });
-                await signOut(auth);
-                window.location.href = 'index.html';
-                return;
-            }
-            isResultOperatorSession = true;
-            currentAdminRole = 'result_operator';
-            window.AppSession?.startStaff(staffRow.name || 'Result Operator', currentAdminEmail);
         } else {
             currentAdminRole = matchingAdmin.role || 'super_admin';
             window.AppSession?.startAdmin();

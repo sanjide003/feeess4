@@ -530,7 +530,8 @@ import { BASE_PATH, applyInstitutionBranding, escapeHtml, hardenExternalLinks, n
                     // Array validation logic for notices & gallery fixed
                     onSnapshot(doc(db, `${BASE_PATH}/settings`, 'content'), snap => {
                         const content = snap.exists() ? snap.data() : {};
-                        directoryCategories = Array.isArray(content.directoryCategories) ? content.directoryCategories : [];
+                        const rawDirCats = Array.isArray(content.directoryCategories) ? content.directoryCategories : [];
+                        directoryCategories = rawDirCats.filter((c) => c && !['Teacher', 'Management'].includes(String(c.id || '').trim()));
                         const aboutDescEl = document.getElementById('about-desc');
                         if (aboutDescEl) {
                             aboutDescEl.innerHTML = renderNoticeTextWithLinks(content.description || 'Welcome to our institution.', 25);
@@ -873,14 +874,19 @@ import { BASE_PATH, applyInstitutionBranding, escapeHtml, hardenExternalLinks, n
                             return;
                         }
                         const collectorKey = String(activeCollector.email || activeCollector.username || userLogin).trim().toLowerCase();
-                        window.AppSession?.startStaff(activeCollector.name || '', collectorKey, {
-                            collection: activeCollector.canCollect !== false,
-                            result: activeCollector.canManageResults === true,
-                            worksheet: true,
-                            source: 'staff',
-                            userKey: collectorKey,
-                            loginId: userLogin
-                        });
+                        if (activeCollector.canAccessAdmin === true) {
+                            window.AppSession?.startAdmin();
+                        } else {
+                            window.AppSession?.startStaff(activeCollector.name || '', collectorKey, {
+                                collection: activeCollector.canCollect !== false,
+                                result: activeCollector.canManageResults === true,
+                                worksheet: activeCollector.canAccessWorksheet !== false,
+                                admin: activeCollector.canAccessAdmin === true,
+                                source: 'staff',
+                                userKey: collectorKey,
+                                loginId: userLogin
+                            });
+                        }
                         window.location.href = 'official.html';
                         return;
                     } else {

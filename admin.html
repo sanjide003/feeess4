@@ -250,57 +250,123 @@
                     <div id="dir-categories-list" class="flex flex-wrap items-center gap-2 pt-2.5 mt-2.5 border-t border-emerald-200/50"></div>
                 </div>
                 <div class="card p-5 rounded-xl shadow-sm mb-6">
-                    <h2 class="text-xl font-bold mb-4 text-gray-800 border-b pb-2">Add New Staff</h2>
-                    
-                    <!-- 1. Staff Photo (Moved to Top) -->
-                    <div class="mb-5 flex flex-col sm:flex-row gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100 items-center">
-                        <div class="relative w-20 h-20 rounded-full border-2 border-slate-200 overflow-hidden bg-slate-100 flex items-center justify-center shrink-0 shadow-inner">
-                            <img id="st-photo-preview" class="w-full h-full object-cover hidden" alt="Staff Profile Preview">
-                            <i id="st-photo-placeholder" class="fas fa-user text-3xl text-slate-400"></i>
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 border-b pb-3">
+                        <div>
+                            <h2 class="text-xl font-bold text-gray-800">Add New Staff</h2>
+                            <p class="text-xs text-gray-500 mt-0.5">Select a category below to automatically load its configured input fields.</p>
                         </div>
-                        <div class="flex-1 text-center sm:text-left space-y-1.5">
-                            <label class="block text-xs font-black text-slate-700">Staff Photo (Max 50KB)</label>
-                            <div class="flex flex-wrap gap-2 justify-center sm:justify-start">
-                                <button type="button" id="st-camera-btn" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-md font-bold text-xs flex items-center gap-1 shadow-sm transition-all"><i class="fas fa-camera"></i> Camera</button>
-                                <button type="button" id="st-upload-btn" class="px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-md font-bold text-xs flex items-center gap-1 shadow-sm transition-all"><i class="fas fa-upload"></i> Upload</button>
-                                <button type="button" id="st-remove-btn" class="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 rounded-md font-bold text-xs transition-all hidden">Remove</button>
-                            </div>
-                            <input type="hidden" id="st-photo" value="">
-                            <input type="file" id="st-file-input" accept="image/*" class="hidden">
+                        <span id="st-active-category-badge" class="text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full self-start sm:self-auto">Category: Teacher</span>
+                    </div>
+
+                    <!-- 1. Category / Type Selector -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-bold text-slate-800 mb-1"><i class="fas fa-layer-group text-emerald-600 mr-1"></i> 1. Select Staff Category (Type) <span class="mandatory-star">*</span></label>
+                            <select id="st-type" class="w-full p-2.5 border border-slate-300 rounded-lg bg-white font-semibold text-gray-800 focus:ring-2 focus:ring-emerald-500"></select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-slate-800 mb-1"><i class="fas fa-sort-numeric-down text-blue-600 mr-1"></i> Display Order (Public)</label>
+                            <input type="number" id="st-display-order" min="1" class="w-full p-2.5 border border-slate-300 rounded-lg bg-white" placeholder="1 = first" value="999">
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                        <div class="md:col-span-1"><label class="block text-sm font-semibold mb-1">1. Type <span class="mandatory-star">*</span></label><select id="st-type" class="w-full p-2.5 border rounded-lg"></select></div>
-                        <div class="md:col-span-2"><label class="block text-sm font-semibold mb-1">2. Full Name <span class="mandatory-star">*</span></label><input type="text" id="st-name" class="w-full p-2.5 border rounded-lg" placeholder="e.g. John Doe"></div>
+                    <!-- 2. Dynamic Category Input Fields Container -->
+                    <div id="st-dynamic-fields-container" class="space-y-4 mb-6">
+                        <!-- Dynamically rendered based on selected category's fields -->
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div><label class="block text-sm font-semibold mb-1">3. Role/Subject <span class="mandatory-star">*</span></label><input type="text" id="st-role" class="w-full p-2.5 border rounded-lg" placeholder="e.g. Principal / Maths Teacher"></div>
-                        <div><label class="block text-sm font-semibold mb-1">4. Phone</label><input type="text" id="st-phone" class="w-full p-2.5 border rounded-lg" placeholder="Contact number"></div>
-                    </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 bg-blue-50 p-4 rounded-lg border border-blue-100">
-                        <div>
-                            <p class="text-sm font-bold text-blue-800 mb-1"><i class="fas fa-envelope"></i> 5. Login Email (For Cashier Auth)</p>
-                            <p class="text-xs text-blue-600 mb-2">Collection login username (staff email).</p>
-                            <input type="email" id="st-email" class="w-full p-2.5 border rounded-lg" placeholder="staff@institute.com">
+
+                    <!-- 3. Dedicated Account Status, Public Visibility & 4-Portal Access Section -->
+                    <div class="rounded-2xl border border-indigo-100 bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 p-4 sm:p-5 mb-5 shadow-xs">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3 mb-4">
+                            <div class="flex items-center gap-2.5">
+                                <span class="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-sm shadow-xs"><i class="fas fa-shield-halved"></i></span>
+                                <div>
+                                    <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wide">Account Status & 4-Portal Access Control</h3>
+                                    <p class="text-[11px] text-slate-500">Configure active status, public directory display, and access to the 4 official portals</p>
+                                </div>
+                            </div>
                         </div>
-                        <div>
-                            <p class="text-sm font-bold text-blue-800 mb-1"><i class="fas fa-key"></i> 6. Login Password</p>
-                            <p class="text-xs text-blue-600 mb-2">Staff collection password (stored in staff record).</p>
-                            <input type="text" id="st-password" class="w-full p-2.5 border rounded-lg" placeholder="Set staff password">
+
+                        <!-- Row 1: Account Active & Public Page Visibility -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                            <label class="flex items-center justify-between p-3 rounded-xl bg-white border border-emerald-200 shadow-2xs cursor-pointer hover:bg-emerald-50/40 transition">
+                                <div class="flex items-center gap-3">
+                                    <span class="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center"><i class="fas fa-user-check"></i></span>
+                                    <div>
+                                        <div class="text-xs font-extrabold text-slate-800">Active Staff Account</div>
+                                        <div class="text-[11px] text-slate-500">Enable account & login capability</div>
+                                    </div>
+                                </div>
+                                <input type="checkbox" id="st-active" class="w-5 h-5 rounded text-emerald-600 focus:ring-emerald-500" checked>
+                            </label>
+
+                            <label class="flex items-center justify-between p-3 rounded-xl bg-white border border-sky-200 shadow-2xs cursor-pointer hover:bg-sky-50/40 transition">
+                                <div class="flex items-center gap-3">
+                                    <span class="w-9 h-9 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center"><i class="fas fa-globe"></i></span>
+                                    <div>
+                                        <div class="text-xs font-extrabold text-slate-800">Show on Public Page</div>
+                                        <div class="text-[11px] text-slate-500">Display profile card on website</div>
+                                    </div>
+                                </div>
+                                <input type="checkbox" id="st-show-public" class="w-5 h-5 rounded text-sky-600 focus:ring-sky-500" checked>
+                            </label>
+                        </div>
+
+                        <!-- Row 2: 4-Portal Access Grid -->
+                        <div class="text-[11px] font-bold uppercase tracking-wider text-indigo-900 mb-2 flex items-center gap-1.5">
+                            <i class="fas fa-key text-indigo-600"></i> 4-Page Portal Access Permissions (നാല് പേജുകളിലേക്കുമുള്ള ആക്സസ്)
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <!-- Portal 1: Collection Panel -->
+                            <label class="flex items-start justify-between p-3 rounded-xl bg-white border border-gray-200 hover:border-green-300 shadow-2xs cursor-pointer transition">
+                                <div class="pr-2">
+                                    <div class="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                        <i class="fas fa-cash-register text-green-600"></i>
+                                        <span>1. Fee Collection</span>
+                                    </div>
+                                    <p class="text-[10px] text-slate-500 mt-1">Cashier & fee ledger access</p>
+                                </div>
+                                <input type="checkbox" id="st-can-collect" class="w-4 h-4 mt-0.5 rounded text-green-600 shrink-0" checked>
+                            </label>
+
+                            <!-- Portal 2: Class Worksheet -->
+                            <label class="flex items-start justify-between p-3 rounded-xl bg-white border border-gray-200 hover:border-blue-300 shadow-2xs cursor-pointer transition">
+                                <div class="pr-2">
+                                    <div class="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                        <i class="fas fa-table-list text-blue-600"></i>
+                                        <span>2. Class Worksheet</span>
+                                    </div>
+                                    <p class="text-[10px] text-slate-500 mt-1">Student, staff & class workspace</p>
+                                </div>
+                                <input type="checkbox" id="st-can-worksheet" class="w-4 h-4 mt-0.5 rounded text-blue-600 shrink-0" checked>
+                            </label>
+
+                            <!-- Portal 3: Result Management -->
+                            <label class="flex items-start justify-between p-3 rounded-xl bg-white border border-gray-200 hover:border-indigo-300 shadow-2xs cursor-pointer transition">
+                                <div class="pr-2">
+                                    <div class="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                        <i class="fas fa-square-poll-vertical text-indigo-600"></i>
+                                        <span>3. Result Portal</span>
+                                    </div>
+                                    <p class="text-[10px] text-slate-500 mt-1">Exam marks & result publishing</p>
+                                </div>
+                                <input type="checkbox" id="st-can-manage-results" class="w-4 h-4 mt-0.5 rounded text-indigo-600 shrink-0">
+                            </label>
+
+                            <!-- Portal 4: Admin Panel -->
+                            <label class="flex items-start justify-between p-3 rounded-xl bg-white border border-gray-200 hover:border-violet-300 shadow-2xs cursor-pointer transition">
+                                <div class="pr-2">
+                                    <div class="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                        <i class="fas fa-user-shield text-violet-600"></i>
+                                        <span>4. Admin Panel</span>
+                                    </div>
+                                    <p class="text-[10px] text-slate-500 mt-1">Full system & settings control</p>
+                                </div>
+                                <input type="checkbox" id="st-can-access-admin" class="w-4 h-4 mt-0.5 rounded text-violet-600 shrink-0">
+                            </label>
                         </div>
                     </div>
-                    <div class="mb-4">
-                        <label class="block text-sm font-semibold mb-1">7. MSR Number</label><input type="text" id="st-msr" class="w-full p-2.5 border rounded-lg" placeholder="(For Teachers)">
-                    </div>
-                    <div class="mb-4"><label class="block text-sm font-semibold mb-1">8. Address</label><textarea id="st-address" rows="2" class="w-full p-2.5 border rounded-lg" placeholder="Full address..."></textarea></div>
-                    <div class="mb-4"><label class="block text-sm font-semibold mb-1">9. Display Order (Public ترتيب)</label><input type="number" id="st-display-order" min="1" class="w-full p-2.5 border rounded-lg" placeholder="1 = first" value="999"><p class="text-xs text-gray-500 mt-1">Public page-ൽ card order നിശ്ചയിക്കാൻ മാത്രം. ഇവിടെ മാത്രമേ കാണൂ.</p></div>
-                    <div class="mb-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <label class="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" id="st-active" class="w-4 h-4 rounded text-blue-600" checked><span class="text-sm font-medium text-gray-600">9. Active staff account</span></label>
-                        <label class="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" id="st-can-collect" class="w-4 h-4 rounded text-green-600" checked><span class="text-sm font-medium text-gray-600">10. Collection panel access</span></label>
-                        <label class="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" id="st-can-manage-results" class="w-4 h-4 rounded text-indigo-600"><span class="text-sm font-medium text-gray-600">11. Result management access</span></label>
-                        <label class="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" id="st-show-public" class="w-4 h-4 rounded text-emerald-600" checked><span class="text-sm font-medium text-gray-600">12. Show on public page</span></label>
-                    </div>
+
                     <div class="text-right border-t pt-4"><button id="add-staff-btn" class="btn-primary font-bold py-2.5 px-6 rounded-lg shadow-md w-full sm:w-auto"><i class="fas fa-plus mr-2"></i> Add Staff</button></div>
                 </div>
                 <div class="card p-4 rounded-xl shadow-sm mb-6 bg-slate-50 border border-slate-200">
@@ -837,49 +903,117 @@
     <!-- Edit Staff Modal -->
     <div id="edit-staff-popup" class="fixed inset-0 popup-overlay items-center justify-center hidden px-4 z-50">
         <div class="card rounded-2xl shadow-2xl p-6 w-full max-w-2xl mx-auto bg-white max-h-[90vh] overflow-y-auto relative">
-            <h3 class="text-xl font-bold mb-4 text-gray-900 border-b pb-2">Edit Staff Details</h3>
-            
-            <!-- Staff Photo (Top) -->
-            <div class="mb-4 flex flex-col sm:flex-row gap-4 bg-gray-50 p-3 rounded-xl border border-gray-100 items-center">
-                <div class="relative w-16 h-16 rounded-full border-2 border-slate-200 overflow-hidden bg-slate-100 flex items-center justify-center shrink-0 shadow-inner">
-                    <img id="e-st-photo-preview" class="w-full h-full object-cover hidden" alt="Staff Profile Preview">
-                    <i id="e-st-photo-placeholder" class="fas fa-user text-2xl text-slate-400"></i>
+            <div class="flex items-center justify-between border-b pb-3 mb-4">
+                <div>
+                    <h3 class="text-xl font-bold text-gray-900">Edit Staff Details</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">Input fields automatically match the selected staff category.</p>
                 </div>
-                <div class="flex-1 text-center sm:text-left space-y-1.5">
-                    <label class="block text-xs font-black text-slate-700">Staff Photo (Max 50KB)</label>
-                    <div class="flex flex-wrap gap-1.5 justify-center sm:justify-start">
-                        <button type="button" id="e-st-camera-btn" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-md font-bold text-[10px] flex items-center gap-1 shadow-sm transition-all"><i class="fas fa-camera"></i> Camera</button>
-                        <button type="button" id="e-st-upload-btn" class="px-2.5 py-1 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-md font-bold text-[10px] flex items-center gap-1 shadow-sm transition-all"><i class="fas fa-upload"></i> Upload</button>
-                        <button type="button" id="e-st-remove-btn" class="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 rounded-md font-bold text-[10px] transition-all hidden">Remove</button>
-                    </div>
-                    <input type="hidden" id="e-st-photo" value="">
-                    <input type="file" id="e-st-file-input" accept="image/*" class="hidden">
+                <span id="e-st-active-category-badge" class="text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full">Category: Teacher</span>
+            </div>
+
+            <!-- 1. Category / Type Selector -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-bold text-slate-800 mb-1"><i class="fas fa-layer-group text-emerald-600 mr-1"></i> 1. Staff Category (Type) <span class="mandatory-star">*</span></label>
+                    <select id="e-st-type" class="w-full p-2.5 border border-slate-300 rounded-lg bg-white font-semibold text-gray-800"></select>
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-slate-800 mb-1"><i class="fas fa-sort-numeric-down text-blue-600 mr-1"></i> Display Order (Public)</label>
+                    <input type="number" id="e-st-display-order" min="1" class="w-full p-2.5 border border-slate-300 rounded-lg bg-white" value="999">
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div class="md:col-span-1"><label class="block text-sm font-semibold mb-1">1. Type</label><select id="e-st-type" class="w-full p-2.5 border rounded-lg bg-gray-50"></select></div>
-                <div class="md:col-span-2"><label class="block text-sm font-semibold mb-1">2. Full Name</label><input type="text" id="e-st-name" class="w-full p-2.5 border rounded-lg bg-gray-50"></div>
+            <!-- 2. Dynamic Category Input Fields Container -->
+            <div id="e-st-dynamic-fields-container" class="space-y-4 mb-5">
+                <!-- Dynamically rendered based on selected category's fields -->
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div><label class="block text-sm font-semibold mb-1">3. Role/Subject</label><input type="text" id="e-st-role" class="w-full p-2.5 border rounded-lg bg-gray-50"></div>
-                <div><label class="block text-sm font-semibold mb-1">4. Phone</label><input type="text" id="e-st-phone" class="w-full p-2.5 border rounded-lg bg-gray-50"></div>
+
+            <!-- 3. Dedicated Account Status, Public Visibility & 4-Portal Access Section -->
+            <div class="rounded-2xl border border-indigo-100 bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 p-4 mb-4 shadow-xs">
+                <div class="flex items-center gap-2 border-b border-slate-200 pb-2.5 mb-3">
+                    <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs shadow-xs"><i class="fas fa-shield-halved"></i></span>
+                    <div>
+                        <h4 class="text-xs font-extrabold text-slate-900 uppercase tracking-wide">Account Status & 4-Portal Access Control</h4>
+                        <p class="text-[10px] text-slate-500">Manage active status, public website card, and 4-portal permissions</p>
+                    </div>
+                </div>
+
+                <!-- Row 1: Account Active & Public Page Visibility -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-3.5">
+                    <label class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-emerald-200 shadow-2xs cursor-pointer hover:bg-emerald-50/40 transition">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs"><i class="fas fa-user-check"></i></span>
+                            <div>
+                                <div class="text-xs font-extrabold text-slate-800">Active Staff Account</div>
+                                <div class="text-[10px] text-slate-500">Enable login & access</div>
+                            </div>
+                        </div>
+                        <input type="checkbox" id="e-st-active" class="w-4 h-4 rounded text-emerald-600">
+                    </label>
+
+                    <label class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-sky-200 shadow-2xs cursor-pointer hover:bg-sky-50/40 transition">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-8 h-8 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center text-xs"><i class="fas fa-globe"></i></span>
+                            <div>
+                                <div class="text-xs font-extrabold text-slate-800">Show on Public Page</div>
+                                <div class="text-[10px] text-slate-500">Show profile on website</div>
+                            </div>
+                        </div>
+                        <input type="checkbox" id="e-st-show-public" class="w-4 h-4 rounded text-sky-600">
+                    </label>
+                </div>
+
+                <!-- Row 2: 4-Portal Access Grid -->
+                <div class="text-[10px] font-bold uppercase tracking-wider text-indigo-900 mb-2 flex items-center gap-1">
+                    <i class="fas fa-key text-indigo-600"></i> 4-Page Portal Access Permissions (നാല് പേജുകളിലേക്കുമുള്ള ആക്സസ്)
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <label class="flex items-start justify-between p-2.5 rounded-xl bg-white border border-gray-200 hover:border-green-300 shadow-2xs cursor-pointer transition">
+                        <div class="pr-2">
+                            <div class="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                <i class="fas fa-cash-register text-green-600"></i>
+                                <span>1. Fee Collection</span>
+                            </div>
+                            <p class="text-[10px] text-slate-500 mt-0.5">Cashier & fee ledger access</p>
+                        </div>
+                        <input type="checkbox" id="e-st-can-collect" class="w-4 h-4 mt-0.5 rounded text-green-600 shrink-0">
+                    </label>
+
+                    <label class="flex items-start justify-between p-2.5 rounded-xl bg-white border border-gray-200 hover:border-blue-300 shadow-2xs cursor-pointer transition">
+                        <div class="pr-2">
+                            <div class="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                <i class="fas fa-table-list text-blue-600"></i>
+                                <span>2. Class Worksheet</span>
+                            </div>
+                            <p class="text-[10px] text-slate-500 mt-0.5">Student, staff & class workspace</p>
+                        </div>
+                        <input type="checkbox" id="e-st-can-worksheet" class="w-4 h-4 mt-0.5 rounded text-blue-600 shrink-0">
+                    </label>
+
+                    <label class="flex items-start justify-between p-2.5 rounded-xl bg-white border border-gray-200 hover:border-indigo-300 shadow-2xs cursor-pointer transition">
+                        <div class="pr-2">
+                            <div class="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                <i class="fas fa-square-poll-vertical text-indigo-600"></i>
+                                <span>3. Result Portal</span>
+                            </div>
+                            <p class="text-[10px] text-slate-500 mt-0.5">Exam marks & result publishing</p>
+                        </div>
+                        <input type="checkbox" id="e-st-can-manage-results" class="w-4 h-4 mt-0.5 rounded text-indigo-600 shrink-0">
+                    </label>
+
+                    <label class="flex items-start justify-between p-2.5 rounded-xl bg-white border border-gray-200 hover:border-violet-300 shadow-2xs cursor-pointer transition">
+                        <div class="pr-2">
+                            <div class="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                <i class="fas fa-user-shield text-violet-600"></i>
+                                <span>4. Admin Panel</span>
+                            </div>
+                            <p class="text-[10px] text-slate-500 mt-0.5">Full system & settings control</p>
+                        </div>
+                        <input type="checkbox" id="e-st-can-access-admin" class="w-4 h-4 mt-0.5 rounded text-violet-600 shrink-0">
+                    </label>
+                </div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
-                <div><label class="block text-sm font-semibold mb-1 text-blue-900">5. Login Email</label><input type="email" id="e-st-email" class="w-full p-2.5 border rounded-lg"></div>
-                <div><label class="block text-sm font-semibold mb-1 text-blue-900">6. Login Password</label><input type="text" id="e-st-password" class="w-full p-2.5 border rounded-lg"></div>
-            </div>
-            <div class="mb-4">
-                <label class="block text-sm font-semibold mb-1">7. MSR Number</label><input type="text" id="e-st-msr" class="w-full p-2.5 border rounded-lg bg-gray-50">
-            </div>
-            <div class="mb-4"><label class="block text-sm font-semibold mb-1">8. Address</label><textarea id="e-st-addr" rows="2" class="w-full p-2.5 border rounded-lg bg-gray-50"></textarea></div>
-            <div class="mb-4"><label class="block text-sm font-semibold mb-1">9. Display Order (Public ترتيب)</label><input type="number" id="e-st-display-order" min="1" class="w-full p-2.5 border rounded-lg bg-gray-50" value="999"></div>
-            <div class="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <label class="flex items-center gap-2 text-sm font-medium text-gray-600"><input type="checkbox" id="e-st-active" class="w-4 h-4 rounded text-blue-600"> Active</label>
-                <label class="flex items-center gap-2 text-sm font-medium text-gray-600"><input type="checkbox" id="e-st-can-collect" class="w-4 h-4 rounded text-green-600"> Collection panel access</label>
-                <label class="flex items-center gap-2 text-sm font-medium text-gray-600"><input type="checkbox" id="e-st-can-manage-results" class="w-4 h-4 rounded text-indigo-600"> Result management access</label>
-                <label class="flex items-center gap-2 text-sm font-medium text-gray-600"><input type="checkbox" id="e-st-show-public" class="w-4 h-4 rounded text-emerald-600"> Show on public page</label>
-            </div>
+
             <div class="flex justify-end gap-3 pt-4 border-t mt-4">
                 <button id="edit-staff-cancel" class="px-5 py-2.5 bg-gray-200 font-bold rounded-lg hover:bg-gray-300">Cancel</button>
                 <button id="edit-staff-update" class="btn-primary px-6 py-2.5 rounded-lg font-bold shadow-md">Update Staff</button>

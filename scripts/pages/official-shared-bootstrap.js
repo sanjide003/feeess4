@@ -289,8 +289,8 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
         const staffAccess = window.AppSession?.getStaffAccess?.() || {};
         canCollection = staffAccess.collection === true || (staffProfile.canCollect !== false && staffProfile.canCollect !== undefined);
         canResult = staffAccess.result === true || staffProfile.canManageResults === true;
-        canWorksheet = true;
-        canAdmin = false;
+        canWorksheet = staffAccess.worksheet !== false && staffProfile.canAccessWorksheet !== false;
+        canAdmin = staffAccess.admin === true || staffProfile.canAccessAdmin === true;
       } else if (userSession?.source === 'directory') {
         const entry = directoryEntries.find((item) => item.id === userSession.id);
         const access = getPageAccessItem(entry?.categoryId || userSession.categoryId, entry?.id || userSession.id);

@@ -3,9 +3,9 @@
     const DEFAULT_SESSION_IDLE_MAX_AGE_MS = 1000 * 60 * 10;
     const ROLE_SESSION_POLICY = {
         student: { maxAgeMs: 1000 * 60 * 30, idleMs: 1000 * 60 * 20 },
-        // Collection/staff access should remain signed in until the user explicitly logs out.
+        // Collection/staff and admin access should remain signed in until the user explicitly logs out.
         staff: { maxAgeMs: 0, idleMs: 0 },
-        admin: { maxAgeMs: 1000 * 60 * 15, idleMs: 1000 * 60 * 10 }
+        admin: { maxAgeMs: 0, idleMs: 0 }
     };
     const STAFF_STATE_KEY = 'app_session_staff_state';
     const ADMIN_STATE_KEY = 'app_session_admin_state';

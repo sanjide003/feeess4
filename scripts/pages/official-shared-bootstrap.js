@@ -1269,7 +1269,10 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       const profile = getCurrentSessionProfile();
       const isDirectory = userSession?.source === 'directory';
       const label = isDirectory ? (profile.values?.name || userSession?.name || 'User') : (profile.name || userSession?.name || 'User');
-      const photo = isDirectory ? getPhoto(profile.values || {}) : getPhoto(profile || {});
+      const rawPhoto = isDirectory
+        ? (profile.values?.photo || profile.values?.image || '')
+        : (profile.photo || profile.image || profile.customValues?.photo || '');
+      const hasPhoto = Boolean(rawPhoto && typeof rawPhoto === 'string' && rawPhoto.trim() !== '' && !rawPhoto.includes('assets/images/logo.png'));
       const userType = isDirectory ? (getDirectoryCategory(profile.categoryId)?.name || userSession?.type || 'Category User') : (profile.type || userSession?.type || '--');
       const entries = isDirectory ? getDirectoryProfileEntries(profile) : (userSession?.source === 'staff' ? getStaffProfileEntries(profile) : renderKeyValueGrid(profile, ['photo', 'image', 'logo']));
       const detailHtml = Array.isArray(entries) ? renderEntriesGrid(entries) : entries;
@@ -2133,6 +2136,7 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
     });
 
     const restoreOfficialSession = async () => {
+      let hasValidSession = false;
       try {
         if (window.AppSession && window.AppSession.isFresh()) {
           const role = window.AppSession.getRole();
@@ -2140,7 +2144,7 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
             const stateKey = role === 'admin' ? 'app_session_admin_state' : 'app_session_staff_state';
             const rawState = localStorage.getItem(stateKey);
             const state = rawState ? JSON.parse(rawState) : {};
-            
+
             userSession = {
               name: state.name || (role === 'admin' ? 'Super Admin' : 'Staff'),
               username: state.email || (role === 'admin' ? 'admin' : (state.userKey || 'staff')),
@@ -2148,15 +2152,34 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
               source: role === 'admin' ? 'firebase' : (state.access?.source || 'staff'),
               access: state.access || null
             };
-            await loadData();
-            showApp();
-            return; 
+            hasValidSession = true;
           }
         }
+      } catch (_sessionErr) {
+        hasValidSession = false;
+      }
+
+      if (!hasValidSession) {
         // Direct link access without valid session from index.html must return to index.html
         window.location.replace('index.html');
-      } catch (_error) {
-        window.location.replace('index.html');
+        return;
+      }
+
+      try {
+        await loadData();
+        if (isWorksheetPage) {
+          const perms = evaluateModulePermissions();
+          if (!perms.worksheet) {
+            window.location.replace('official.html');
+            return;
+          }
+        }
+        showApp();
+      } catch (renderError) {
+        console.error('Official portal data/render error:', renderError);
+        try {
+          showApp();
+        } catch (_fallbackErr) {}
       }
     };
 

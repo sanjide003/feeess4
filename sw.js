@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fee-tracker-v21';
+const CACHE_NAME = 'fee-tracker-v22';
 const IMAGE_CACHE_NAME = 'fee-tracker-images-v1';
 const ASSETS_TO_CACHE = [
   './',

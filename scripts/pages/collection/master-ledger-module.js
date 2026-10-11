@@ -30,6 +30,9 @@ const filters = {
     statusFilter: 'ALL' // 'ALL', 'CONCESSION', 'GROUP', 'PENDING'
 };
 
+let ledgerRowLimit = 25;
+let ledgerVisibleCount = 25;
+
 // Bulk Selection State for Master Fee Ledger
 // Key: `${unitId}__${month}`, Value: { unitId, month, type: 'pay' | 'edit', paymentId }
 const selectedLedgerCells = new Map();
@@ -359,6 +362,9 @@ const renderLedgerTable = () => {
         return;
     }
 
+    const totalUnitsCount = list.length;
+    const visibleList = list.slice(0, ledgerVisibleCount);
+
     let html = `
         <table class="min-w-full text-xs text-left border-collapse border border-slate-200 bg-white shadow-sm master-ledger-sticky-table">
             <thead class="bg-slate-50 text-[11px] font-black text-slate-700 uppercase tracking-wider border-b border-slate-200 sticky top-0 z-30 shadow-xs">
@@ -383,7 +389,7 @@ const renderLedgerTable = () => {
             <tbody class="divide-y divide-slate-100 font-medium">
     `;
 
-    list.forEach((unit, idx) => {
+    visibleList.forEach((unit, idx) => {
         const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40';
 
         // Student Names markup with numbering and gender badges
@@ -531,7 +537,37 @@ const renderLedgerTable = () => {
         </table>
     `;
 
+    if (visibleList.length < totalUnitsCount) {
+        const nextBatchCount = Math.min(ledgerRowLimit, totalUnitsCount - visibleList.length);
+        html += `
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3.5 bg-slate-50 border-t border-slate-200">
+                <span class="text-xs font-bold text-slate-600">
+                    Showing <span class="text-slate-900 font-extrabold">${visibleList.length}</span> of <span class="text-slate-900 font-extrabold">${totalUnitsCount}</span> records
+                </span>
+                <button type="button" id="ledger-load-next-btn" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition inline-flex items-center gap-2 cursor-pointer">
+                    <span>Next (+${nextBatchCount})</span>
+                    <i class="fas fa-arrow-down text-[10px]"></i>
+                </button>
+            </div>
+        `;
+    } else if (totalUnitsCount > 0) {
+        html += `
+            <div class="flex items-center justify-between px-4 py-2.5 bg-slate-50/70 border-t border-slate-200 text-[11px] font-bold text-slate-500">
+                <span>Showing all ${totalUnitsCount} records</span>
+            </div>
+        `;
+    }
+
+    const prevScrollTop = tableContainer.scrollTop;
+    const prevScrollLeft = tableContainer.scrollLeft;
     tableContainer.innerHTML = html;
+    tableContainer.scrollTop = prevScrollTop;
+    tableContainer.scrollLeft = prevScrollLeft;
+
+    document.getElementById('ledger-load-next-btn')?.addEventListener('click', () => {
+        ledgerVisibleCount += ledgerRowLimit;
+        renderLedgerTable();
+    });
 
     // Attach event handlers for interactive checkboxes & buttons
     attachTableEventHandlers(list);
@@ -912,6 +948,7 @@ const resetFilters = () => {
     filters.studentSort = 'DEFAULT';
     filters.genderMode = 'MIXED';
     filters.statusFilter = 'ALL';
+    ledgerVisibleCount = ledgerRowLimit;
 
     const searchInput = document.getElementById('ledger-search-input');
     if (searchInput) searchInput.value = '';
@@ -955,11 +992,22 @@ export const initMasterLedgerModule = () => {
 
     appLog('info', 'collection.masterLedger', 'Master Fee Ledger module initialized');
 
+    // 0. Rows Limit Listener
+    const rowLimitSelect = document.getElementById('ledger-row-limit');
+    if (rowLimitSelect) {
+        rowLimitSelect.addEventListener('change', (e) => {
+            ledgerRowLimit = parseInt(e.target.value, 10) || 25;
+            ledgerVisibleCount = ledgerRowLimit;
+            renderLedgerTable();
+        });
+    }
+
     // 1. Search Input Listener
     const searchInput = document.getElementById('ledger-search-input');
     if (searchInput) {
         searchInput.addEventListener('input', (e) => {
             filters.search = e.target.value;
+            ledgerVisibleCount = ledgerRowLimit;
             renderLedgerTable();
         });
     }
@@ -969,6 +1017,7 @@ export const initMasterLedgerModule = () => {
     if (classFilter) {
         classFilter.addEventListener('change', (e) => {
             filters.classFilter = e.target.value;
+            ledgerVisibleCount = ledgerRowLimit;
             renderLedgerTable();
         });
     }
@@ -978,6 +1027,7 @@ export const initMasterLedgerModule = () => {
     if (classOrder) {
         classOrder.addEventListener('change', (e) => {
             filters.classOrder = e.target.value;
+            ledgerVisibleCount = ledgerRowLimit;
             renderLedgerTable();
         });
     }
@@ -987,6 +1037,7 @@ export const initMasterLedgerModule = () => {
     if (studentSort) {
         studentSort.addEventListener('change', (e) => {
             filters.studentSort = e.target.value;
+            ledgerVisibleCount = ledgerRowLimit;
             renderLedgerTable();
         });
     }
@@ -996,6 +1047,7 @@ export const initMasterLedgerModule = () => {
     if (genderMode) {
         genderMode.addEventListener('change', (e) => {
             filters.genderMode = e.target.value;
+            ledgerVisibleCount = ledgerRowLimit;
             renderLedgerTable();
         });
     }
@@ -1005,6 +1057,7 @@ export const initMasterLedgerModule = () => {
     if (statusFilter) {
         statusFilter.addEventListener('change', (e) => {
             filters.statusFilter = e.target.value;
+            ledgerVisibleCount = ledgerRowLimit;
             renderLedgerTable();
         });
     }

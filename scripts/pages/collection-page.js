@@ -1728,8 +1728,22 @@ document.getElementById('entry-gender').addEventListener('change', (e) => {
         populateStudentSuggestions(currentInputVal);
     }
 });
-document.getElementById('filter-class').addEventListener('change', () => renderFeeTable());
-document.getElementById('filter-gender').addEventListener('change', () => renderFeeTable());
+let feeStatusRowLimit = 25;
+let feeStatusVisibleCount = 25;
+
+document.getElementById('filter-class').addEventListener('change', () => {
+    feeStatusVisibleCount = feeStatusRowLimit;
+    renderFeeTable();
+});
+document.getElementById('filter-gender').addEventListener('change', () => {
+    feeStatusVisibleCount = feeStatusRowLimit;
+    renderFeeTable();
+});
+document.getElementById('fee-status-row-limit')?.addEventListener('change', (e) => {
+    feeStatusRowLimit = parseInt(e.target.value, 10) || 25;
+    feeStatusVisibleCount = feeStatusRowLimit;
+    renderFeeTable();
+});
 
 const populateStudentSuggestions = (searchTerm = '') => {
     const cls = document.getElementById('entry-class').value;
@@ -3074,20 +3088,31 @@ const renderFeeTable = () => {
         </thead>
         <tbody class="divide-y divide-slate-100 font-medium">`;
 
-    Object.values(list.reduce((acc, s) => {
-        const k=`${s.class}#${s.gender}`;
+    const sortedGroups = Object.values(list.reduce((acc, s) => {
+        const k = `${s.class}#${s.gender}`;
         if (!acc[k]) acc[k] = { class: s.class, gender: s.gender, students: [] };
         acc[k].students.push(s);
         return acc;
     }, {}))
-    .sort((a,b) => {
-        const classCompare = a.class.localeCompare(b.class, undefined, {numeric: true});
+    .sort((a, b) => {
+        const classCompare = a.class.localeCompare(b.class, undefined, { numeric: true });
         if (classCompare !== 0) return classCompare;
         if (a.gender === 'Male' && b.gender !== 'Male') return -1;
         if (a.gender !== 'Male' && b.gender === 'Male') return 1;
         return 0;
-    })
-    .forEach(g => {
+    });
+
+    const totalStudentsCount = list.length;
+    let renderedStudentsCount = 0;
+
+    for (const g of sortedGroups) {
+        if (renderedStudentsCount >= feeStatusVisibleCount) break;
+
+        const sortedGroupStudents = [...g.students].sort((a, b) => (a.adm || '').localeCompare(b.adm || '', undefined, { numeric: true }));
+        const remainingAllowance = feeStatusVisibleCount - renderedStudentsCount;
+        const visibleGroupStudents = sortedGroupStudents.slice(0, remainingAllowance);
+        if (visibleGroupStudents.length === 0) break;
+
         html += `<tr class="bg-slate-100 font-extrabold text-slate-800 tracking-wide text-xs">
             <td colspan="${items.length+2}" class="p-2.5 px-4 bg-slate-100 border-y border-slate-200">
                 <span class="inline-flex items-center gap-2">
@@ -3098,7 +3123,8 @@ const renderFeeTable = () => {
             </td>
         </tr>`;
 
-        g.students.sort((a,b) => (a.adm||'').localeCompare(b.adm||'', undefined, {numeric: true})).forEach(s => {
+        visibleGroupStudents.forEach(s => {
+            renderedStudentsCount += 1;
             html += `<tr class="hover:bg-slate-50/80 bg-white transition border-b border-slate-100">
                 <td class="p-2.5 font-mono text-slate-600 sticky left-0 bg-white z-10 border-r border-slate-200">${escapeHtml(s.adm || '-')}</td>
                 <td class="p-2.5 font-bold text-slate-900 border-r border-slate-200 sticky left-20 bg-white z-10">${escapeHtml(s.name)}</td>`;
@@ -3164,8 +3190,41 @@ const renderFeeTable = () => {
             });
             html += `</tr>`;
         });
+    }
+
+    html += `</tbody></table>`;
+
+    if (renderedStudentsCount < totalStudentsCount) {
+        const nextBatchCount = Math.min(feeStatusRowLimit, totalStudentsCount - renderedStudentsCount);
+        html += `
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3.5 bg-slate-50 border-t border-slate-200">
+                <span class="text-xs font-bold text-slate-600">
+                    Showing <span class="text-slate-900 font-extrabold">${renderedStudentsCount}</span> of <span class="text-slate-900 font-extrabold">${totalStudentsCount}</span> students
+                </span>
+                <button type="button" id="fee-status-load-next-btn" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition inline-flex items-center gap-2 cursor-pointer">
+                    <span>Next (+${nextBatchCount})</span>
+                    <i class="fas fa-arrow-down text-[10px]"></i>
+                </button>
+            </div>
+        `;
+    } else if (totalStudentsCount > 0) {
+        html += `
+            <div class="flex items-center justify-between px-4 py-2.5 bg-slate-50/70 border-t border-slate-200 text-[11px] font-bold text-slate-500">
+                <span>Showing all ${totalStudentsCount} students</span>
+            </div>
+        `;
+    }
+
+    const prevScrollTop = cont.scrollTop;
+    const prevScrollLeft = cont.scrollLeft;
+    cont.innerHTML = html;
+    cont.scrollTop = prevScrollTop;
+    cont.scrollLeft = prevScrollLeft;
+
+    document.getElementById('fee-status-load-next-btn')?.addEventListener('click', () => {
+        feeStatusVisibleCount += feeStatusRowLimit;
+        renderFeeTable();
     });
-    cont.innerHTML = html + `</tbody></table>`;
 
     // Attach checkbox listeners for Fee Status
     cont.querySelectorAll('.fee-status-col-all-cb').forEach(colCb => {

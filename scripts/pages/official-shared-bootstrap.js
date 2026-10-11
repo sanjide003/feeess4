@@ -609,194 +609,193 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
     };
 
     const buildStudentDetailHtml = (student = {}) => {
+      const prof = (student?.profile && typeof student.profile === 'object') ? student.profile : {};
+      const pick = (...vals) => {
+        for (const v of vals) {
+          if (v !== undefined && v !== null && String(v).trim() !== '' && String(v).trim() !== '--') {
+            return String(v).trim();
+          }
+        }
+        return '';
+      };
+      const formatDateIfIso = (val = '') => {
+        if (!val) return '--';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+          const [y, m, d] = val.split('-');
+          return `${d}/${m}/${y}`;
+        }
+        return val;
+      };
+
       const group = getStudentGroup(student.id);
       const status = getStudentStatus(student);
+      const isAct = status.toLowerCase() === 'active';
 
-      const knownKeys = ['id', 'photo', 'image', 'photoUrl', 'photo_url', 'avatar', 'class', 'uid', 'name', 'father', 'mother', 'gender', 'adm', 'dob', 'adm_date', 'admDate', 'status', 'adhaar', 'aadhaar', 'aadhar', 'mobile', 'phone', 'fatherMobile', 'motherMobile', 'mother_mobile', 'address', 'concessionFee', 'busStop', 'busFee', 'route', 'remarks', 'academicYears'];
-      const extraFields = Object.entries(student || {}).filter(([k, v]) => !knownKeys.includes(k) && v !== null && v !== undefined && String(v).trim() !== '');
+      const nameVal = pick(student.name, prof.name) || '--';
+      const classVal = pick(student.class, student.studentClass, prof.class) || '--';
+      const admVal = pick(student.adm, prof.admNo, prof.adm) || '--';
+      const uidVal = pick(student.uid, prof.uid) || '--';
+      const genderVal = pick(student.gender, prof.gender) || '--';
+      const fatherVal = pick(student.father, prof.father, student.guardian) || '--';
+      const motherVal = pick(student.mother, prof.mother) || '--';
+      const dobVal = formatDateIfIso(pick(student.dob, prof.dob));
+      const admDateVal = formatDateIfIso(pick(student.adm_date, student.admDate, prof.admDate, prof.adm_date));
+      const adhaarVal = pick(student.adhaar, student.aadhaar, student.aadhar, prof.adhaar, prof.aadhaar) || '--';
+      const fatherPhone = pick(student.mobile, student.phone, student.fatherMobile, prof.mobile, prof.phone);
+      const motherPhone = pick(student.motherMobile, student.mother_mobile, prof.motherMobile);
+      const addressVal = pick(student.address, prof.address) || '--';
 
-      const fatherPhone = student.mobile || student.phone || student.fatherMobile || '';
-      const motherPhone = student.motherMobile || student.mother_mobile || '';
-      const uidVal = student.uid || student.id || '--';
-      const admDateVal = student.adm_date || student.admDate || '--';
-      const adhaarVal = student.adhaar || student.aadhaar || student.aadhar || '--';
-      const avatarHtml = renderAvatarMarkup(student, student.name, 'w-20 h-20 rounded-2xl text-2xl');
+      const hasIndividualConc = hasStudentConcession(student);
+      const concText = group
+        ? (hasIndividualConc ? `₹${student.concessionFee}/mo (Group: ₹${group.fee || 0}/mo)` : `Group Rate: ₹${group.fee || 0}/mo`)
+        : (hasIndividualConc ? `₹${student.concessionFee}/month` : 'None (Standard Rate)');
+
+      const hiddenDetailKeys = new Set([
+        'id', 'photo', 'image', 'photoUrl', 'photo_url', 'avatar', 'logo',
+        'profile', 'concessionUpdatedAt', 'concessionAppliedBy', 'concession_updated_at', 'concession_applied_by',
+        'academicYears', 'academicYear', 'isActive', 'left', 'createdAt', 'updatedAt',
+        'class', 'studentClass', 'uid', 'name', 'father', 'guardian', 'mother', 'gender',
+        'adm', 'admNo', 'dob', 'adm_date', 'admDate', 'status', 'adhaar', 'aadhaar', 'aadhar',
+        'mobile', 'phone', 'fatherMobile', 'motherMobile', 'mother_mobile', 'address', 'concessionFee',
+        'busStop', 'busFee', 'route'
+      ]);
+      const isHiddenDetailKey = (k = '') => {
+        if (hiddenDetailKeys.has(k)) return true;
+        const lower = String(k || '').toLowerCase().replace(/[\s_.-]+/g, '');
+        return lower === 'profile'
+          || lower === 'concessionupdatedat'
+          || lower === 'concessionupdated'
+          || lower === 'concessionappliedby'
+          || lower === 'concessionapplied';
+      };
+
+      const extraFields = Object.entries(student || {}).filter(([k, v]) => {
+        if (isHiddenDetailKey(k)) return false;
+        if (v === null || v === undefined || typeof v === 'object') return false;
+        const disp = String(valueToDisplay(v)).trim();
+        return disp !== '' && disp !== '--';
+      });
+
+      const avatarHtml = renderAvatarMarkup(student, nameVal, 'w-20 h-20 sm:w-24 sm:h-24 rounded-2xl text-2xl shadow-md border-2 border-white/25');
 
       return `
         <div class="space-y-4">
-          <!-- Header Banner with Student Avatar -->
-          <div class="flex flex-col sm:flex-row items-center sm:items-start gap-4 p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white shadow-md">
+          <!-- Top Identity Banner -->
+          <div class="flex flex-col sm:flex-row items-center sm:items-center gap-4 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-md border border-slate-800">
             <div class="flex-shrink-0">
               ${avatarHtml}
             </div>
             <div class="text-center sm:text-left flex-1 min-w-0">
-              <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-1">
-                <h3 class="text-xl font-extrabold text-white truncate">${escapeHtml(student.name || '--')}</h3>
-                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold ${status === 'Active' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : 'bg-slate-700 text-slate-300'}">${escapeHtml(status)}</span>
+              <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-1.5">
+                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider ${isAct ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : 'bg-rose-500/20 text-rose-300 border border-rose-400/30'}">${escapeHtml(status)}</span>
+                <span class="px-2.5 py-0.5 rounded-lg text-[11px] font-extrabold bg-blue-600 text-white shadow-2xs">Class: ${escapeHtml(classVal)}</span>
+                <span class="px-2.5 py-0.5 rounded-lg text-[11px] font-mono font-bold bg-white/10 text-slate-100 border border-white/15">Adm No: ${escapeHtml(admVal)}</span>
               </div>
-              <p class="text-xs font-semibold text-indigo-200">
-                Class: <b class="text-white">${escapeHtml(student.class || '--')}</b> &nbsp;•&nbsp;
-                Adm No: <b class="text-white">${escapeHtml(student.adm || '--')}</b> &nbsp;•&nbsp;
-                UID: <b class="text-white">${escapeHtml(uidVal)}</b>
-              </p>
-            </div>
-          </div>
-
-          <!-- 3-Tab Navigator -->
-          <div class="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
-            <button type="button" class="modal-nav-tab active" data-stu-tab="personal">
-              <i class="fas fa-user-circle"></i>
-              <span>1. Personal Details</span>
-            </button>
-            <button type="button" class="modal-nav-tab" data-stu-tab="academic">
-              <i class="fas fa-graduation-cap"></i>
-              <span>2. Academic Details</span>
-            </button>
-            <button type="button" class="modal-nav-tab" data-stu-tab="fee">
-              <i class="fas fa-receipt"></i>
-              <span>3. Fee & Services</span>
-            </button>
-          </div>
-
-          <!-- Tab Pane 1: Personal (7 core fields) -->
-          <div id="stu-tab-pane-personal" class="stu-tab-pane space-y-3">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">4. Full Student Name</span>
-                <div class="font-extrabold text-slate-900 text-sm mt-0.5">${escapeHtml(student.name || '--')}</div>
-              </div>
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">7. Gender</span>
-                <div class="font-extrabold text-slate-900 text-sm mt-0.5">${escapeHtml(student.gender || '--')}</div>
-              </div>
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">9. Date of Birth (DOB)</span>
-                <div class="font-extrabold text-slate-900 text-sm mt-0.5">${escapeHtml(student.dob || '--')}</div>
-              </div>
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">12. Aadhaar Number</span>
-                <div class="font-extrabold text-slate-900 text-sm mt-0.5 font-mono">${escapeHtml(adhaarVal)}</div>
-              </div>
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">5. Father's Name</span>
-                <div class="font-extrabold text-slate-900 text-sm mt-0.5">${escapeHtml(student.father || '--')}</div>
-              </div>
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">13. Father's Phone Number</span>
-                <div class="font-extrabold text-slate-900 text-sm mt-0.5 flex items-center justify-between">
-                  <span class="font-mono">${escapeHtml(fatherPhone || '--')}</span>
-                  ${fatherPhone ? `<a href="tel:${escapeHtml(fatherPhone)}" class="text-blue-600 hover:text-blue-800 p-1" title="Call Father"><i class="fas fa-phone-alt text-xs"></i></a>` : ''}
-                </div>
-              </div>
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">6. Mother's Name</span>
-                <div class="font-extrabold text-slate-900 text-sm mt-0.5">${escapeHtml(student.mother || '--')}</div>
-              </div>
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">14. Mother's Phone Number</span>
-                <div class="font-extrabold text-slate-900 text-sm mt-0.5 flex items-center justify-between">
-                  <span class="font-mono">${escapeHtml(motherPhone || '--')}</span>
-                  ${motherPhone ? `<a href="tel:${escapeHtml(motherPhone)}" class="text-blue-600 hover:text-blue-800 p-1" title="Call Mother"><i class="fas fa-phone-alt text-xs"></i></a>` : ''}
-                </div>
-              </div>
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 sm:col-span-2 lg:col-span-3">
-                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">15. Permanent Address</span>
-                <div class="font-medium text-slate-900 text-sm mt-0.5 whitespace-pre-line leading-relaxed">${escapeHtml(student.address || '--')}</div>
+              <h3 class="text-xl sm:text-2xl font-black text-white leading-snug break-words">${escapeHtml(nameVal)}</h3>
+              <div class="text-xs font-semibold text-indigo-200 mt-1 flex flex-wrap items-center justify-center sm:justify-start gap-x-3 gap-y-1">
+                <span><i class="fas fa-venus-mars mr-1 opacity-75"></i>Gender: <b class="text-white">${escapeHtml(genderVal)}</b></span>
+                <span>•</span>
+                <span><i class="fas fa-fingerprint mr-1 opacity-75"></i>UID: <b class="text-white font-mono">${escapeHtml(uidVal)}</b></span>
               </div>
             </div>
           </div>
 
-          <!-- Tab Pane 2: Academic (5 core fields) -->
-          <div id="stu-tab-pane-academic" class="stu-tab-pane space-y-3 hidden">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <div class="p-3 rounded-xl bg-indigo-50/70 border border-indigo-100">
-                <span class="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">2. Current Class</span>
-                <div class="font-extrabold text-indigo-950 text-base mt-0.5">${escapeHtml(student.class || '--')}</div>
+          <!-- Complete Official Details Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+            <div class="bg-slate-50/90 border border-slate-200 rounded-xl p-3">
+              <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Father's Name</div>
+              <div class="font-extrabold text-slate-900 text-sm mt-0.5 break-words">${escapeHtml(fatherVal)}</div>
+            </div>
+            <div class="bg-slate-50/90 border border-slate-200 rounded-xl p-3">
+              <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Mother's Name</div>
+              <div class="font-extrabold text-slate-900 text-sm mt-0.5 break-words">${escapeHtml(motherVal)}</div>
+            </div>
+            <div class="bg-slate-50/90 border border-slate-200 rounded-xl p-3">
+              <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Date of Birth (DOB)</div>
+              <div class="font-extrabold font-mono text-slate-900 text-sm mt-0.5">${escapeHtml(dobVal)}</div>
+            </div>
+            <div class="bg-slate-50/90 border border-slate-200 rounded-xl p-3">
+              <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Date of Admission</div>
+              <div class="font-extrabold font-mono text-slate-900 text-sm mt-0.5">${escapeHtml(admDateVal)}</div>
+            </div>
+            <div class="bg-slate-50/90 border border-slate-200 rounded-xl p-3">
+              <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Aadhaar Number</div>
+              <div class="font-extrabold font-mono text-slate-900 text-sm mt-0.5">${escapeHtml(adhaarVal)}</div>
+            </div>
+            <div class="${hasIndividualConc || group ? 'bg-emerald-50/80 border-emerald-200' : 'bg-slate-50/90 border-slate-200'} border rounded-xl p-3">
+              <div class="text-[10px] font-extrabold uppercase tracking-wider ${hasIndividualConc || group ? 'text-emerald-700' : 'text-slate-400'}">Fee Concession</div>
+              <div class="font-extrabold ${hasIndividualConc || group ? 'text-emerald-900' : 'text-slate-800'} text-sm mt-0.5">${escapeHtml(concText)}</div>
+            </div>
+            <div class="bg-slate-50/90 border border-slate-200 rounded-xl p-3">
+              <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Father's Phone</div>
+              <div class="flex items-center justify-between gap-2 mt-0.5">
+                <span class="font-extrabold font-mono text-slate-900 text-sm">${escapeHtml(fatherPhone || 'Not Available')}</span>
+                ${fatherPhone ? `<a href="tel:${escapeHtml(fatherPhone)}" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold inline-flex items-center gap-1 shadow-2xs transition"><i class="fas fa-phone-alt text-[9px]"></i> Call</a>` : ''}
               </div>
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">8. Admission Number (Adm. No.)</span>
-                <div class="font-extrabold text-slate-900 text-base mt-0.5 font-mono">${escapeHtml(student.adm || '--')}</div>
+            </div>
+            <div class="bg-slate-50/90 border border-slate-200 rounded-xl p-3">
+              <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Mother's Phone</div>
+              <div class="flex items-center justify-between gap-2 mt-0.5">
+                <span class="font-extrabold font-mono text-slate-900 text-sm">${escapeHtml(motherPhone || 'Not Available')}</span>
+                ${motherPhone ? `<a href="tel:${escapeHtml(motherPhone)}" class="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold inline-flex items-center gap-1 shadow-2xs transition"><i class="fas fa-phone-alt text-[9px]"></i> Call</a>` : ''}
               </div>
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">3. Unique ID (ID / UID)</span>
-                <div class="font-extrabold text-slate-900 text-sm mt-0.5 font-mono">${escapeHtml(uidVal)}</div>
-              </div>
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">10. Date of Admission</span>
-                <div class="font-extrabold text-slate-900 text-sm mt-0.5">${escapeHtml(admDateVal)}</div>
-              </div>
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">11. Student Status</span>
-                <div class="font-extrabold text-slate-900 text-sm mt-0.5">${escapeHtml(status)}</div>
-              </div>
+            </div>
+            <div class="bg-slate-50/90 border border-slate-200 rounded-xl p-3 sm:col-span-2 lg:col-span-1">
+              <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Permanent Address</div>
+              <div class="font-bold text-slate-900 text-sm mt-0.5 break-words leading-relaxed">${escapeHtml(addressVal)}</div>
             </div>
           </div>
 
-          <!-- Tab Pane 3: Fee & Services -->
-          <div id="stu-tab-pane-fee" class="stu-tab-pane space-y-3 hidden">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div class="p-3.5 rounded-xl border ${hasStudentConcession(student) ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}">
-                <span class="text-[10px] font-bold uppercase tracking-wider block ${hasStudentConcession(student) ? 'text-emerald-700' : 'text-slate-500'}">Fee Concession Status</span>
-                <div class="font-extrabold text-sm mt-1 ${hasStudentConcession(student) ? 'text-emerald-900' : 'text-slate-800'}">
-                  ${hasStudentConcession(student) ? `Concession Granted: ₹${escapeHtml(String(student.concessionFee))}` : 'Standard Fee Structure (No Concession)'}
-                </div>
+          ${(student.busStop || student.busFee || student.route) ? `
+            <div class="p-3.5 rounded-xl border border-amber-200 bg-amber-50/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div class="font-extrabold text-amber-800 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
+                <i class="fas fa-bus text-amber-600"></i> Transport & Bus Service
               </div>
-              <div class="p-3.5 rounded-xl border ${group ? 'border-blue-200 bg-blue-50' : 'border-slate-200 bg-slate-50'}">
-                <span class="text-[10px] font-bold uppercase tracking-wider block ${group ? 'text-blue-700' : 'text-slate-500'}">Group Concession</span>
-                <div class="font-extrabold text-sm mt-1 ${group ? 'text-blue-900' : 'text-slate-800'}">
-                  ${group ? `Active in Group (Fee: ₹${escapeHtml(String(group.fee || 0))}/month)` : 'Individual Student Account'}
-                </div>
+              <div class="font-bold text-slate-900">
+                Stop: <b>${escapeHtml(student.busStop || '--')}</b> &nbsp;•&nbsp; Bus Fee: <b>₹${escapeHtml(String(student.busFee || 0))}</b> &nbsp;•&nbsp; Route: <b>${escapeHtml(student.route || '--')}</b>
               </div>
-              ${(student.busStop || student.busFee || student.route) ? `
-              <div class="p-3.5 rounded-xl border border-amber-200 bg-amber-50 sm:col-span-2">
-                <span class="text-[10px] font-bold uppercase tracking-wider block text-amber-700">Transport & Bus Details</span>
-                <div class="font-bold text-slate-900 text-sm mt-1">
-                  Stop: <b>${escapeHtml(student.busStop || '--')}</b> &nbsp;•&nbsp; Bus Fee: <b>₹${escapeHtml(String(student.busFee || 0))}</b> &nbsp;•&nbsp; Route: <b>${escapeHtml(student.route || '--')}</b>
-                </div>
-              </div>` : ''}
-            </div>
+            </div>` : ''}
 
-            ${group ? `
-              <div class="rounded-2xl border border-blue-200 bg-blue-50/70 p-3.5">
-                <div class="flex items-center justify-between gap-2 mb-2">
-                  <h4 class="font-extrabold text-blue-900 text-sm"><i class="fas fa-users mr-1.5"></i> Linked Group Members</h4>
-                  <span class="badge">₹${escapeHtml(String(group.fee || 0))}/month</span>
-                </div>
-                <div class="space-y-1.5">${getGroupMemberRows(group).map((member, index) => `
-                  <div class="flex items-center justify-between rounded-xl bg-white border border-blue-100 px-3 py-2 text-xs">
-                    <span class="font-bold ${member.id === student.id ? 'text-blue-700' : 'text-slate-800'}">${index + 1}. ${escapeHtml(member.name || '--')}</span>
-                    <span class="text-slate-500 font-semibold">Class ${escapeHtml(member.class || '--')}</span>
-                  </div>`).join('')}
-                </div>
-              </div>` : ''}
+          <!-- Linked Family / Sibling Group Members -->
+          ${group ? `
+            <div class="rounded-2xl border border-blue-200 bg-blue-50/70 p-3.5">
+              <div class="flex items-center justify-between gap-2 mb-2.5">
+                <span class="text-xs font-extrabold uppercase tracking-wider text-blue-900 flex items-center gap-1.5">
+                  <i class="fas fa-users text-blue-600"></i> Family / Sibling Group Members
+                </span>
+                <span class="text-xs font-extrabold text-blue-900 bg-white border border-blue-200 px-3 py-0.5 rounded-full shadow-2xs">Group Fee: ₹${escapeHtml(String(group.fee || 0))}/mo</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                ${getGroupMemberRows(group).map((member, index) => {
+                  const isCurrent = member.id === student.id;
+                  return `
+                    <div class="flex items-center justify-between gap-2 rounded-xl bg-white border ${isCurrent ? 'border-blue-400 bg-blue-50/40' : 'border-blue-100'} px-3 py-2 text-xs shadow-2xs">
+                      <span class="${isCurrent ? 'font-extrabold text-blue-950' : 'font-bold text-slate-800'} truncate">${index + 1}. ${escapeHtml(member.name || '--')}</span>
+                      <div class="flex items-center gap-1.5 shrink-0">
+                        <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[10px] font-bold">Adm: ${escapeHtml(member.adm || '--')}</span>
+                        <span class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-bold text-[10px]">Cls: ${escapeHtml(member.class || '--')}</span>
+                      </div>
+                    </div>`;
+                }).join('')}
+              </div>
+            </div>` : ''}
 
-            ${extraFields.length ? `
-              <div class="rounded-2xl border border-slate-200 p-3 bg-white">
-                <h4 class="text-xs font-bold text-slate-600 mb-2 uppercase tracking-wider">Additional Attributes</h4>
-                <div class="grid grid-cols-2 gap-2 text-xs">
-                  ${extraFields.map(([k, v]) => `
-                    <div class="p-2 rounded-xl bg-slate-50 border border-slate-100">
-                      <span class="text-slate-400 font-bold block text-[10px] uppercase">${escapeHtml(toLabel(k))}</span>
-                      <span class="font-semibold text-slate-800">${escapeHtml(valueToDisplay(v))}</span>
-                    </div>
-                  `).join('')}
-                </div>
-              </div>` : ''}
-          </div>
+          ${extraFields.length ? `
+            <div class="rounded-2xl border border-slate-200 p-3.5 bg-white">
+              <h4 class="text-[10px] font-extrabold text-slate-400 mb-2.5 uppercase tracking-wider">Additional Custom Fields</h4>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+                ${extraFields.map(([k, v]) => `
+                  <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                    <span class="text-slate-400 font-bold block text-[10px] uppercase">${escapeHtml(toLabel(k))}</span>
+                    <span class="font-extrabold text-slate-800 mt-0.5 block break-words">${escapeHtml(valueToDisplay(v))}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>` : ''}
         </div>`;
     };
 
-    const attachStudentModalTabs = () => {
-      document.querySelectorAll('#official-detail-body [data-stu-tab]').forEach((tabBtn) => {
-        tabBtn.addEventListener('click', () => {
-          const target = tabBtn.dataset.stuTab;
-          document.querySelectorAll('#official-detail-body [data-stu-tab]').forEach((b) => b.classList.remove('active'));
-          tabBtn.classList.add('active');
-          document.querySelectorAll('#official-detail-body .stu-tab-pane').forEach((pane) => pane.classList.add('hidden'));
-          document.getElementById(`stu-tab-pane-${target}`)?.classList.remove('hidden');
-        });
-      });
-    };
+    const attachStudentModalTabs = () => {};
 
     const getFilteredStudentsList = () => {
       const yearStudents = getStudentsForCurrentAcademicYear();
@@ -958,9 +957,9 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       const paginatedStudents = filteredStudents.slice(startIdx, endIdx);
 
       const coreAdminColumns = [
+        { key: 'name', label: 'Student Name' },
         { key: 'class', label: 'Class' },
         { key: 'uid', label: 'UID' },
-        { key: 'name', label: 'Student Name' },
         { key: 'father', label: 'Father Name' },
         { key: 'mother', label: 'Mother Name' },
         { key: 'gender', label: 'Gender' },
@@ -994,8 +993,8 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       const extraKeys = [...new Set(filteredStudents.flatMap((student) => Object.keys(student || {})))].filter((key) => !isHiddenExtraKey(key));
 
       const headerCells = [
-        ...coreAdminColumns.map((col) => `<th class="border border-slate-200 px-2.5 py-2 whitespace-nowrap text-left font-extrabold text-slate-700">${escapeHtml(col.label)}</th>`),
-        ...extraKeys.map((key) => `<th class="border border-slate-200 px-2.5 py-2 whitespace-nowrap text-left font-extrabold text-slate-700">${escapeHtml(toLabel(key))}</th>`)
+        ...coreAdminColumns.map((col) => `<th class="${col.key === 'name' ? 'stu-sticky-col-3' : ''} px-2.5 py-2.5 whitespace-nowrap text-left font-extrabold text-slate-700">${escapeHtml(col.label)}</th>`),
+        ...extraKeys.map((key) => `<th class="px-2.5 py-2.5 whitespace-nowrap text-left font-extrabold text-slate-700">${escapeHtml(toLabel(key))}</th>`)
       ].join('');
 
       const getStudentColValue = (student, key) => {
@@ -1022,28 +1021,28 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
         const group = getStudentGroup(student.id);
         const status = getStudentStatus(student);
         return `<tr class="hover:bg-blue-50/80 cursor-pointer official-student-row transition-colors odd:bg-white even:bg-slate-50/40" data-student-id="${escapeHtml(student.id)}">
-          <td class="border border-slate-200 px-2.5 py-2 text-center font-extrabold text-slate-700">${serialNo}</td>
-          <td class="border border-slate-200 px-2 py-1.5 text-center align-middle">
+          <td class="stu-sticky-col-1 px-2.5 py-2 text-center font-extrabold text-slate-700">${serialNo}</td>
+          <td class="stu-sticky-col-2 px-2 py-1.5 text-center align-middle">
             ${renderAvatarMarkup(student, student.name, 'w-9 h-9 rounded-xl text-xs')}
           </td>
           ${coreAdminColumns.map((col) => {
             const val = getStudentColValue(student, col.key);
             if (col.key === 'name') {
-              return `<td class="border border-slate-200 px-2.5 py-2 align-middle font-extrabold text-slate-900 whitespace-nowrap">${escapeHtml(val)}</td>`;
+              return `<td class="stu-sticky-col-3 px-2.5 py-2 align-middle font-extrabold text-slate-900 whitespace-nowrap truncate" title="${escapeHtml(val)}">${escapeHtml(val)}</td>`;
             }
             if (col.key === 'class') {
-              return `<td class="border border-slate-200 px-2.5 py-2 align-middle text-center"><span class="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold text-xs">${escapeHtml(val)}</span></td>`;
+              return `<td class="px-2.5 py-2 align-middle text-center"><span class="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold text-xs">${escapeHtml(val)}</span></td>`;
             }
             if (col.key === 'status') {
-              return `<td class="border border-slate-200 px-2.5 py-2 align-middle text-center"><span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}">${escapeHtml(status)}</span></td>`;
+              return `<td class="px-2.5 py-2 align-middle text-center"><span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}">${escapeHtml(status)}</span></td>`;
             }
             if (col.key === 'address') {
-              return `<td class="border border-slate-200 px-2.5 py-2 align-middle min-w-[180px] max-w-[260px] truncate" title="${escapeHtml(val)}">${escapeHtml(val)}</td>`;
+              return `<td class="px-2.5 py-2 align-middle min-w-[180px] max-w-[260px] truncate" title="${escapeHtml(val)}">${escapeHtml(val)}</td>`;
             }
-            return `<td class="border border-slate-200 px-2.5 py-2 align-middle whitespace-nowrap text-slate-700">${escapeHtml(val)}</td>`;
+            return `<td class="px-2.5 py-2 align-middle whitespace-nowrap text-slate-700">${escapeHtml(val)}</td>`;
           }).join('')}
-          ${extraKeys.map((key) => `<td class="border border-slate-200 px-2.5 py-2 align-middle whitespace-nowrap text-slate-700">${escapeHtml(getStudentColValue(student, key))}</td>`).join('')}
-          <td class="border border-slate-200 px-2.5 py-2 align-middle whitespace-nowrap">${group ? `<span class="badge">Group ₹${escapeHtml(String(group.fee || 0))}</span>` : '--'}</td>
+          ${extraKeys.map((key) => `<td class="px-2.5 py-2 align-middle whitespace-nowrap text-slate-700">${escapeHtml(getStudentColValue(student, key))}</td>`).join('')}
+          <td class="px-2.5 py-2 align-middle whitespace-nowrap">${group ? `<span class="badge">Group ₹${escapeHtml(String(group.fee || 0))}</span>` : '--'}</td>
         </tr>`;
       }).join('');
 
@@ -1166,19 +1165,19 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
             </div>
           </div>
 
-          <!-- Full-Screen Responsive Data Table -->
-          <div class="overflow-x-auto w-full rounded-xl border border-slate-200">
-            <table class="w-full text-xs border-collapse min-w-[1400px]">
+          <!-- Full-Screen Responsive Data Table with Sticky Header & Sticky Left Columns -->
+          <div class="stu-reg-scroll-wrap w-full rounded-xl border border-slate-200">
+            <table class="stu-reg-table w-full text-xs min-w-[1400px]">
               <thead>
-                <tr class="bg-slate-100 text-slate-700 border-b border-slate-200">
-                  <th class="border border-slate-200 px-2.5 py-2.5 w-12 text-center font-extrabold">NO</th>
-                  <th class="border border-slate-200 px-2 py-2.5 text-center w-14 font-extrabold">Profile</th>
+                <tr class="bg-slate-100 text-slate-700">
+                  <th class="stu-sticky-col-1 px-2.5 py-2.5 w-12 text-center font-extrabold">NO</th>
+                  <th class="stu-sticky-col-2 px-2 py-2.5 text-center w-14 font-extrabold">Profile</th>
                   ${headerCells}
-                  <th class="border border-slate-200 px-2.5 py-2.5 text-left font-extrabold">Group</th>
+                  <th class="px-2.5 py-2.5 text-left font-extrabold">Group</th>
                 </tr>
               </thead>
               <tbody>
-                ${rows || `<tr><td colspan="${coreAdminColumns.length + extraKeys.length + 3}" class="border border-slate-200 p-6 text-center text-slate-500 font-semibold">${emptyStudentMessage}</td></tr>`}
+                ${rows || `<tr><td colspan="${coreAdminColumns.length + extraKeys.length + 3}" class="p-6 text-center text-slate-500 font-semibold">${emptyStudentMessage}</td></tr>`}
               </tbody>
             </table>
           </div>

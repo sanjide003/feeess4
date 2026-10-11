@@ -188,6 +188,78 @@
     .staff-compact-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 16px; transition: all 0.2s ease; display: flex; flex-direction: column; justify-content: space-between; height: 100%; box-shadow: 0 4px 14px rgba(15,23,42,0.03); }
     .staff-compact-card:hover { border-color: #60a5fa; transform: translateY(-2px); box-shadow: 0 12px 24px rgba(15,23,42,0.08); }
 
+    /* Sticky Header & Left Columns for Students Register */
+    .stu-reg-scroll-wrap {
+      max-height: 70vh;
+      overflow: auto;
+      position: relative;
+    }
+    .stu-reg-table {
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+    .stu-reg-table th,
+    .stu-reg-table td {
+      border-right: 1px solid #e2e8f0;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .stu-reg-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background-color: #f1f5f9;
+      border-top: 1px solid #e2e8f0;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+    }
+    .stu-reg-table th.stu-sticky-col-1,
+    .stu-reg-table td.stu-sticky-col-1 {
+      position: sticky;
+      left: 0;
+      width: 48px;
+      min-width: 48px;
+      max-width: 48px;
+      border-left: 1px solid #e2e8f0;
+    }
+    .stu-reg-table th.stu-sticky-col-2,
+    .stu-reg-table td.stu-sticky-col-2 {
+      position: sticky;
+      left: 48px;
+      width: 58px;
+      min-width: 58px;
+      max-width: 58px;
+    }
+    .stu-reg-table th.stu-sticky-col-3,
+    .stu-reg-table td.stu-sticky-col-3 {
+      position: sticky;
+      left: 106px;
+      min-width: 195px;
+      max-width: 240px;
+      box-shadow: 3px 0 6px -2px rgba(15, 23, 42, 0.12);
+    }
+    .stu-reg-table tbody tr:nth-child(odd) td.stu-sticky-col-1,
+    .stu-reg-table tbody tr:nth-child(odd) td.stu-sticky-col-2,
+    .stu-reg-table tbody tr:nth-child(odd) td.stu-sticky-col-3 {
+      background-color: #ffffff;
+      z-index: 10;
+    }
+    .stu-reg-table tbody tr:nth-child(even) td.stu-sticky-col-1,
+    .stu-reg-table tbody tr:nth-child(even) td.stu-sticky-col-2,
+    .stu-reg-table tbody tr:nth-child(even) td.stu-sticky-col-3 {
+      background-color: #f8fafc;
+      z-index: 10;
+    }
+    .stu-reg-table tbody tr:hover td.stu-sticky-col-1,
+    .stu-reg-table tbody tr:hover td.stu-sticky-col-2,
+    .stu-reg-table tbody tr:hover td.stu-sticky-col-3 {
+      background-color: #eff6ff;
+    }
+    .stu-reg-table thead th.stu-sticky-col-1,
+    .stu-reg-table thead th.stu-sticky-col-2,
+    .stu-reg-table thead th.stu-sticky-col-3 {
+      z-index: 30;
+      background-color: #f1f5f9;
+    }
+
     .official-metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
     .official-metric-card{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #dbeafe;border-radius:18px;background:linear-gradient(135deg,#fff,#eff6ff);padding:14px;box-shadow:0 8px 20px rgba(15,23,42,.06)}
     .official-metric-card i{font-size:24px;opacity:.75}

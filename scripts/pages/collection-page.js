@@ -259,8 +259,19 @@ readTabPrefsFromCloud().then((cloudPrefs) => {
 });
 
 // Modals close logic
+const closeStudentProfileModal = () => {
+    const popup = document.getElementById('student-profile-popup');
+    if (popup) {
+        popup.classList.add('hidden');
+        popup.classList.remove('flex');
+    }
+};
 document.getElementById('confirm-cancel')?.addEventListener('click', () => { document.getElementById('confirm-popup').classList.add('hidden'); });
-document.getElementById('close-profile-btn')?.addEventListener('click', () => { document.getElementById('student-profile-popup').classList.add('hidden'); });
+document.getElementById('close-profile-btn')?.addEventListener('click', closeStudentProfileModal);
+document.getElementById('close-profile-footer-btn')?.addEventListener('click', closeStudentProfileModal);
+document.getElementById('student-profile-popup')?.addEventListener('click', (e) => {
+    if (e.target.id === 'student-profile-popup') closeStudentProfileModal();
+});
 document.getElementById('close-my-profile-btn')?.addEventListener('click', () => { document.getElementById('my-profile-popup').classList.add('hidden'); });
 document.getElementById('close-tab-settings-btn')?.addEventListener('click', () => { document.getElementById('tab-settings-popup').classList.add('hidden'); });
 
@@ -504,55 +515,144 @@ window.addEventListener('tabChanged', (e) => {
 
 // --- GLOBAL EXPORTS (For HTML buttons) ---
 window.openStudentProfile = (id) => {
-    const s = getStudentById(id); if(!s) return;
-    document.getElementById('prof-name').textContent = s.name;
-    document.getElementById('prof-class').textContent = s.class;
-    document.getElementById('prof-gender').textContent = s.gender;
-    document.getElementById('prof-adm').textContent = s.adm || '-';
-    document.getElementById('prof-uid').textContent = s.uid || '-';
-    document.getElementById('prof-father').textContent = s.father || '-';
-    document.getElementById('prof-addr').textContent = s.address || '-';
-    const activeGroup = studentGroups.find((group) => Array.isArray(group.memberIds) && group.memberIds.includes(s.id) && Number(group.fee || 0) > 0);
+    const s = getStudentById(id);
+    if (!s) return;
+    const prof = (s.profile && typeof s.profile === 'object') ? s.profile : {};
+    const pick = (...vals) => {
+        for (const v of vals) {
+            if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+        }
+        return '';
+    };
+    const formatDateIfIso = (val = '') => {
+        if (!val) return '-';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+            const [y, m, d] = val.split('-');
+            return `${d}/${m}/${y}`;
+        }
+        return val;
+    };
+
+    // 1. Photo
+    const photoUrl = pick(s.photo, prof.photo);
+    const photoImg = document.getElementById('prof-photo-img');
+    const photoAvatar = document.getElementById('prof-photo-avatar');
+    if (photoImg && photoAvatar) {
+        if (photoUrl) {
+            photoImg.src = photoUrl;
+            photoImg.classList.remove('hidden');
+            photoAvatar.classList.add('hidden');
+            photoImg.onerror = () => {
+                photoImg.classList.add('hidden');
+                photoAvatar.classList.remove('hidden');
+            };
+        } else {
+            photoImg.src = '';
+            photoImg.classList.add('hidden');
+            photoAvatar.classList.remove('hidden');
+        }
+    }
+
+    // 2. Class, 3. UID, 4. Name, 5. Father, 6. Mother, 7. Gender, 8. Adm No, 9. DOB, 10. Adm Date, 11. Status, 12. Aadhaar, 13. Father Phone, 14. Mother Phone, 15. Address
+    const setText = (elId, val) => {
+        const el = document.getElementById(elId);
+        if (el) el.textContent = val || '-';
+    };
+
+    setText('prof-name', pick(s.name, prof.name));
+    setText('prof-class', pick(s.class, s.studentClass, prof.class));
+    setText('prof-gender', pick(s.gender, prof.gender));
+    setText('prof-adm', pick(s.adm, prof.admNo, prof.adm));
+    setText('prof-uid', pick(s.uid, prof.uid));
+    setText('prof-father', pick(s.father, prof.father, s.guardian));
+    setText('prof-mother', pick(s.mother, prof.mother));
+    setText('prof-dob', formatDateIfIso(pick(prof.dob, s.dob)));
+    setText('prof-adm-date', formatDateIfIso(pick(prof.admDate, s.admDate)));
+    setText('prof-aadhaar', pick(prof.adhaar, s.adhaar, prof.aadhaar, s.aadhaar));
+    setText('prof-addr', pick(s.address, prof.address));
+
+    const statusVal = pick(s.status, prof.status) || 'Active';
+    const statusEl = document.getElementById('prof-status');
+    if (statusEl) {
+        statusEl.textContent = statusVal;
+        const lowerStatus = statusVal.toLowerCase();
+        statusEl.className = lowerStatus === 'active'
+            ? 'px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200'
+            : lowerStatus === 'graduated'
+                ? 'px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-100 text-indigo-800 border border-indigo-200'
+                : 'px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-slate-200 text-slate-700 border border-slate-300';
+    }
+
+    // Fee Concession & Group Details
+    const activeGroup = studentGroups.find((group) => Array.isArray(group.memberIds) && group.memberIds.includes(s.id));
     const groupWrap = document.getElementById('prof-group-wrap');
     const groupMembersEl = document.getElementById('prof-group-members');
     const groupAmountEl = document.getElementById('prof-group-amount');
+    const hasIndividualConc = s.concessionFee !== undefined && s.concessionFee !== null && String(s.concessionFee).trim() !== '';
+
     if (activeGroup && groupWrap && groupMembersEl && groupAmountEl) {
-        const groupFee = Number(activeGroup.fee || 0);
-        document.getElementById('prof-conc').textContent = 'Group Payment';
-        groupAmountEl.textContent = `Amount: ₹${groupFee.toFixed(0)}`;
+        const groupFee = Number(activeGroup.fee || defaultFee || 200);
+        setText('prof-conc', hasIndividualConc ? `₹${s.concessionFee}/mo (Group: ₹${groupFee}/mo)` : `Group Rate: ₹${groupFee.toFixed(0)}/mo`);
+        groupAmountEl.textContent = `Group Fee: ₹${groupFee.toFixed(0)}/mo`;
         groupMembersEl.innerHTML = (activeGroup.memberIds || []).map((memberId, index) => {
             const member = students.find((student) => student.id === memberId) || allStudentsRaw.find((student) => student.id === memberId) || {};
             const isSelected = memberId === s.id;
             return `
-                <div class="flex items-center justify-between gap-2 rounded-lg bg-white border border-blue-100 px-2 py-1.5 text-xs">
-                    <span class="${isSelected ? 'font-extrabold text-blue-900' : 'font-bold text-gray-800'}">${index + 1}. ${escapeHtml(member.name || memberId)}</span>
-                    <span class="text-gray-500">${escapeHtml(member.class || '-')}</span>
-                    <span class="font-bold text-green-700">₹${groupFee.toFixed(0)}</span>
+                <div class="flex items-center justify-between gap-2 rounded-lg bg-white border ${isSelected ? 'border-blue-300 bg-blue-50/40' : 'border-blue-100'} px-2.5 py-1.5 text-xs">
+                    <span class="${isSelected ? 'font-extrabold text-blue-950' : 'font-bold text-slate-800'} truncate">${index + 1}. ${escapeHtml(member.name || memberId)}</span>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px] font-bold">Adm: ${escapeHtml(member.adm || '-')}</span>
+                        <span class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-bold text-[10px]">Cls: ${escapeHtml(member.class || '-')}</span>
+                    </div>
                 </div>`;
         }).join('');
         groupWrap.classList.remove('hidden');
     } else {
-        document.getElementById('prof-conc').textContent = s.concessionFee !== undefined && s.concessionFee !== null ? `₹${s.concessionFee}` : 'None';
+        setText('prof-conc', hasIndividualConc ? `₹${s.concessionFee}/month` : 'None (Standard Rate)');
         groupWrap?.classList.add('hidden');
         if (groupMembersEl) groupMembersEl.innerHTML = '';
         if (groupAmountEl) groupAmountEl.textContent = '';
     }
 
+    // 13. Father's Phone & Call Button
+    const fatherPhone = pick(s.mobile, prof.mobile, s.phone);
     const mobCont = document.getElementById('prof-mobile');
     const callBtn = document.getElementById('prof-call-btn');
-    if(s.mobile) {
-        mobCont.textContent = s.mobile;
-        callBtn.href = `tel:${s.mobile}`;
-        callBtn.classList.remove('hidden');
-        callBtn.classList.add('inline-flex');
-    } else {
-        mobCont.textContent = 'Not Available';
-        callBtn.classList.add('hidden');
-        callBtn.classList.remove('inline-flex');
+    if (mobCont && callBtn) {
+        if (fatherPhone) {
+            mobCont.textContent = fatherPhone;
+            callBtn.href = `tel:${fatherPhone}`;
+            callBtn.classList.remove('hidden');
+            callBtn.classList.add('inline-flex');
+        } else {
+            mobCont.textContent = 'Not Available';
+            callBtn.classList.add('hidden');
+            callBtn.classList.remove('inline-flex');
+        }
     }
 
-    document.getElementById('student-profile-popup').classList.remove('hidden');
-    document.getElementById('student-profile-popup').classList.add('flex');
+    // 14. Mother's Phone & Call Button
+    const motherPhone = pick(s.motherMobile, prof.motherMobile);
+    const motherMobCont = document.getElementById('prof-mother-mobile');
+    const motherCallBtn = document.getElementById('prof-mother-call-btn');
+    if (motherMobCont && motherCallBtn) {
+        if (motherPhone) {
+            motherMobCont.textContent = motherPhone;
+            motherCallBtn.href = `tel:${motherPhone}`;
+            motherCallBtn.classList.remove('hidden');
+            motherCallBtn.classList.add('inline-flex');
+        } else {
+            motherMobCont.textContent = 'Not Available';
+            motherCallBtn.classList.add('hidden');
+            motherCallBtn.classList.remove('inline-flex');
+        }
+    }
+
+    const popup = document.getElementById('student-profile-popup');
+    if (popup) {
+        popup.classList.remove('hidden');
+        popup.classList.add('flex');
+    }
 };
 
 const renderTabSettings = () => {

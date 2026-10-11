@@ -694,35 +694,116 @@
         </div>
     </div>
     <!-- Student Profile Popup -->
-    <div id="student-profile-popup" class="modal-overlay">
-        <div class="modal-box relative max-w-md">
-            <button id="close-profile-btn" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
-            <h3 class="text-xl font-bold mb-4 text-gray-900 border-b pb-2 text-left">Student Profile</h3>
-            
-            <div class="space-y-3 mb-6 text-left">
-                <div class="flex justify-between border-b border-gray-100 pb-2"><span class="text-sm text-gray-500 font-medium">Name</span><span class="font-bold text-gray-800" id="prof-name"></span></div>
-                <div class="flex justify-between border-b border-gray-100 pb-2"><span class="text-sm text-gray-500 font-medium">Class</span><span class="font-bold text-gray-800" id="prof-class"></span></div>
-                <div class="flex justify-between border-b border-gray-100 pb-2"><span class="text-sm text-gray-500 font-medium">Gender</span><span class="font-bold text-gray-800" id="prof-gender"></span></div>
-                <div class="flex justify-between border-b border-gray-100 pb-2"><span class="text-sm text-gray-500 font-medium">Adm. No</span><span class="font-bold font-mono text-gray-800" id="prof-adm"></span></div>
-                <div class="flex justify-between border-b border-gray-100 pb-2"><span class="text-sm text-gray-500 font-medium">UID/ID</span><span class="font-bold text-gray-800" id="prof-uid"></span></div>
-                <div class="flex justify-between border-b border-gray-100 pb-2"><span class="text-sm text-gray-500 font-medium">Father's Name</span><span class="font-bold text-gray-800" id="prof-father"></span></div>
-                <div class="flex justify-between border-b border-gray-100 pb-2"><span class="text-sm text-gray-500 font-medium">Address</span><span class="font-bold text-gray-800 text-right max-w-[60%]" id="prof-addr"></span></div>
-                <div class="flex justify-between border-b border-gray-100 pb-2"><span class="text-sm text-gray-500 font-medium">Fee Concession</span><span class="font-bold text-green-600" id="prof-conc"></span></div>
-                <div id="prof-group-wrap" class="hidden rounded-xl border border-blue-100 bg-blue-50 p-3">
-                    <div class="flex items-center justify-between gap-2 mb-2">
-                        <span class="text-[10px] font-bold uppercase tracking-wider text-blue-700">Group Members</span>
-                        <span id="prof-group-amount" class="text-xs font-bold text-blue-800 bg-white border border-blue-100 px-2 py-1 rounded-full"></span>
+    <div id="student-profile-popup" class="modal-overlay hidden !p-3 sm:!p-4">
+        <div class="modal-box relative !max-w-lg w-full !p-0 text-left flex flex-col max-h-[86vh] sm:max-h-[84vh] overflow-hidden rounded-2xl shadow-2xl border border-slate-200 bg-white">
+            <!-- Pinned Header -->
+            <div class="flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-200 bg-slate-50 shrink-0">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center text-sm shadow-2xs shrink-0">
+                        <i class="fas fa-id-card"></i>
                     </div>
-                    <div id="prof-group-members" class="space-y-1"></div>
+                    <div>
+                        <h3 class="text-sm font-black text-slate-900 leading-tight">Student Profile</h3>
+                        <p class="text-[11px] text-slate-500 font-medium leading-tight">Complete 15-Field Official Record</p>
+                    </div>
+                </div>
+                <button type="button" id="close-profile-btn" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition" title="Close">
+                    <i class="fas fa-times text-base"></i>
+                </button>
+            </div>
+
+            <!-- Scrollable Body -->
+            <div class="flex-1 overflow-y-auto custom-scroll p-4 space-y-3.5 min-h-0">
+                <!-- Top Identity Banner (1. Photo, 4. Name, 2. Class, 8. Adm No, 11. Status) -->
+                <div class="flex items-center gap-3.5 p-3 rounded-2xl bg-gradient-to-r from-blue-50/90 via-indigo-50/50 to-slate-50 border border-blue-100">
+                    <div class="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border-2 border-white shadow-md overflow-hidden bg-slate-100 flex items-center justify-center shrink-0">
+                        <img id="prof-photo-img" src="" alt="Student Photo" class="w-full h-full object-cover hidden">
+                        <div id="prof-photo-avatar" class="w-full h-full flex items-center justify-center bg-blue-100 text-blue-600 text-2xl font-black">
+                            <i class="fas fa-user-graduate"></i>
+                        </div>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-1.5 mb-1">
+                            <span id="prof-status" class="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">Active</span>
+                            <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-blue-600 text-white">Class: <span id="prof-class">-</span></span>
+                            <span class="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-white text-slate-700 border border-slate-200">Adm: <span id="prof-adm">-</span></span>
+                        </div>
+                        <h2 id="prof-name" class="text-base sm:text-lg font-black text-slate-900 leading-snug break-words">-</h2>
+                        <div class="text-[11px] text-slate-500 font-semibold mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span>Gender: <b id="prof-gender" class="text-slate-700">-</b></span>
+                            <span>•</span>
+                            <span>UID: <b id="prof-uid" class="font-mono text-slate-700">-</b></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 15-Field Structured Details Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                    <div class="bg-slate-50/80 border border-slate-200/80 rounded-xl p-2.5">
+                        <div class="text-[10px] font-bold uppercase text-slate-400">5. Father's Name</div>
+                        <div id="prof-father" class="font-bold text-slate-800 mt-0.5 break-words">-</div>
+                    </div>
+                    <div class="bg-slate-50/80 border border-slate-200/80 rounded-xl p-2.5">
+                        <div class="text-[10px] font-bold uppercase text-slate-400">6. Mother's Name</div>
+                        <div id="prof-mother" class="font-bold text-slate-800 mt-0.5 break-words">-</div>
+                    </div>
+                    <div class="bg-slate-50/80 border border-slate-200/80 rounded-xl p-2.5">
+                        <div class="text-[10px] font-bold uppercase text-slate-400">9. Date of Birth (DOB)</div>
+                        <div id="prof-dob" class="font-bold font-mono text-slate-800 mt-0.5">-</div>
+                    </div>
+                    <div class="bg-slate-50/80 border border-slate-200/80 rounded-xl p-2.5">
+                        <div class="text-[10px] font-bold uppercase text-slate-400">10. Date of Admission</div>
+                        <div id="prof-adm-date" class="font-bold font-mono text-slate-800 mt-0.5">-</div>
+                    </div>
+                    <div class="bg-slate-50/80 border border-slate-200/80 rounded-xl p-2.5">
+                        <div class="text-[10px] font-bold uppercase text-slate-400">12. Aadhaar Number</div>
+                        <div id="prof-aadhaar" class="font-bold font-mono text-slate-800 mt-0.5">-</div>
+                    </div>
+                    <div class="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-2.5">
+                        <div class="text-[10px] font-bold uppercase text-emerald-700">Fee Concession</div>
+                        <div id="prof-conc" class="font-extrabold text-emerald-800 mt-0.5">None</div>
+                    </div>
+                    <div class="bg-slate-50/80 border border-slate-200/80 rounded-xl p-2.5">
+                        <div class="text-[10px] font-bold uppercase text-slate-400">13. Father's Phone</div>
+                        <div class="flex items-center justify-between gap-2 mt-0.5">
+                            <span id="prof-mobile" class="font-bold font-mono text-slate-800">-</span>
+                            <a href="#" id="prof-call-btn" class="hidden px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold items-center gap-1 shadow-2xs transition">
+                                <i class="fas fa-phone text-[9px]"></i> Call
+                            </a>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50/80 border border-slate-200/80 rounded-xl p-2.5">
+                        <div class="text-[10px] font-bold uppercase text-slate-400">14. Mother's Phone</div>
+                        <div class="flex items-center justify-between gap-2 mt-0.5">
+                            <span id="prof-mother-mobile" class="font-bold font-mono text-slate-800">-</span>
+                            <a href="#" id="prof-mother-call-btn" class="hidden px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold items-center gap-1 shadow-2xs transition">
+                                <i class="fas fa-phone text-[9px]"></i> Call
+                            </a>
+                        </div>
+                    </div>
+                    <div class="sm:col-span-2 bg-slate-50/80 border border-slate-200/80 rounded-xl p-2.5">
+                        <div class="text-[10px] font-bold uppercase text-slate-400">15. Permanent Address</div>
+                        <div id="prof-addr" class="font-bold text-slate-800 mt-0.5 break-words leading-relaxed">-</div>
+                    </div>
+                </div>
+
+                <!-- Group Members Section -->
+                <div id="prof-group-wrap" class="hidden rounded-xl border border-blue-200 bg-blue-50/70 p-3">
+                    <div class="flex items-center justify-between gap-2 mb-2">
+                        <span class="text-[10px] font-extrabold uppercase tracking-wider text-blue-800 flex items-center gap-1.5">
+                            <i class="fas fa-users text-blue-600"></i> Family / Sibling Group Members
+                        </span>
+                        <span id="prof-group-amount" class="text-xs font-extrabold text-blue-900 bg-white border border-blue-200 px-2.5 py-0.5 rounded-full"></span>
+                    </div>
+                    <div id="prof-group-members" class="space-y-1.5"></div>
                 </div>
             </div>
 
-            <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 text-center">
-                <p class="text-xs text-blue-600 font-bold uppercase tracking-wider mb-2">Registered Mobile</p>
-                <div class="text-xl font-bold font-mono text-gray-800 mb-3" id="prof-mobile"></div>
-                <a href="#" id="prof-call-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-full shadow-md inline-flex items-center gap-2 transition transform hover:scale-105">
-                    <i class="fas fa-phone"></i> Call Student
-                </a>
+            <!-- Pinned Footer -->
+            <div class="px-4 py-2.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
+                <button type="button" id="close-profile-footer-btn" class="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold transition">
+                    Close
+                </button>
             </div>
         </div>
     </div>

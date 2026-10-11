@@ -325,33 +325,30 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
         {
           id: 'collection',
           title: 'Fee Collection',
-          desc: 'Student fee receipts, monthly dues, concessions & billing ledger.',
+          desc: 'Receipts, dues & billing ledger',
           icon: 'fa-hand-holding-dollar',
           iconBg: 'bg-emerald-50 text-emerald-600 border border-emerald-200',
-          hoverBorder: 'hover:border-emerald-300',
-          badgeText: 'Finance & Billing',
+          badgeText: 'Finance',
           hasAccess: perms.collection,
           href: 'collection.html'
         },
         {
           id: 'result',
           title: 'Result System',
-          desc: 'Academic examinations, mark entry compilation & published report cards.',
+          desc: 'Exams, marks & report cards',
           icon: 'fa-square-poll-vertical',
           iconBg: 'bg-blue-50 text-blue-600 border border-blue-200',
-          hoverBorder: 'hover:border-blue-300',
-          badgeText: 'Examinations',
+          badgeText: 'Exams',
           hasAccess: perms.result,
           href: 'result.html'
         },
         {
           id: 'worksheet',
           title: 'Worksheet Portal',
-          desc: 'Class student registers, academic summaries, staff directory & Excel sheet.',
+          desc: 'Registers, directory & sheets',
           icon: 'fa-file-excel',
           iconBg: 'bg-teal-50 text-teal-600 border border-teal-200',
-          hoverBorder: 'hover:border-teal-300',
-          badgeText: 'Registers & Sheets',
+          badgeText: 'Registers',
           hasAccess: perms.worksheet,
           href: 'worksheet.html',
           isInternalTab: false
@@ -359,11 +356,10 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
         {
           id: 'admin',
           title: 'Admin Panel',
-          desc: 'Master control center, academic years, classes, staff & security.',
+          desc: 'Classes, staff & system control',
           icon: 'fa-sliders',
           iconBg: 'bg-indigo-50 text-indigo-600 border border-indigo-200',
-          hoverBorder: 'hover:border-indigo-300',
-          badgeText: 'System Master',
+          badgeText: 'Master',
           hasAccess: perms.admin,
           href: 'admin.html'
         }
@@ -373,52 +369,41 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
         if (m.hasAccess) {
           const clickAction = `data-navigate-url="${m.href}"`;
           return `
-            <div ${clickAction} class="relative bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-6 shadow-sm hover:shadow-xl transition-all duration-200 flex flex-col justify-between group cursor-pointer hover:-translate-y-1">
-              <div>
-                <div class="flex items-center justify-between gap-2 mb-4">
-                  <div class="w-14 h-14 rounded-2xl ${m.iconBg} flex items-center justify-center text-2xl shadow-xs group-hover:scale-105 transition-transform">
-                    <i class="fas ${m.icon}"></i>
-                  </div>
-                  <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    Available
-                  </span>
+            <div ${clickAction} class="group flex items-center justify-between gap-3 bg-white border border-slate-200 hover:border-blue-400 rounded-xl p-3.5 shadow-2xs hover:shadow-md transition-all duration-150 cursor-pointer">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="w-10 h-10 rounded-xl ${m.iconBg} flex items-center justify-center text-base shrink-0 group-hover:scale-105 transition-transform">
+                  <i class="fas ${m.icon}"></i>
                 </div>
-                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">${m.badgeText}</div>
-                <h4 class="text-xl font-extrabold text-slate-900 group-hover:text-blue-600 transition-colors">${m.title}</h4>
-                <p class="text-xs font-medium text-slate-500 mt-2 leading-relaxed">${m.desc}</p>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <h4 class="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate">${m.title}</h4>
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" title="Available"></span>
+                  </div>
+                  <p class="text-[11px] text-slate-500 truncate mt-0.5">${m.desc}</p>
+                </div>
               </div>
-              <div class="pt-5 mt-5 border-t border-slate-100 flex items-center justify-between">
-                <span class="text-xs font-semibold text-slate-400 flex items-center gap-1"><i class="fas fa-check-circle text-emerald-500"></i> Authorized Access</span>
-                <span class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-slate-900 group-hover:bg-blue-600 transition-all shadow-xs">
-                  <span>Open Portal</span>
-                  <i class="fas fa-arrow-right text-[10px]"></i>
+              <div class="shrink-0 flex items-center gap-1.5 pl-2">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-slate-700 bg-slate-100 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <span>Open</span>
+                  <i class="fas fa-chevron-right text-[9px]"></i>
                 </span>
               </div>
             </div>`;
         } else {
           return `
-            <div data-locked-reason="${m.title}" class="relative bg-slate-50/80 border border-slate-200/80 rounded-2xl p-6 shadow-none opacity-80 flex flex-col justify-between cursor-not-allowed">
-              <div>
-                <div class="flex items-center justify-between gap-2 mb-4">
-                  <div class="w-14 h-14 rounded-2xl bg-slate-200/80 text-slate-400 flex items-center justify-center text-2xl">
-                    <i class="fas ${m.icon}"></i>
-                  </div>
-                  <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-200 text-slate-600 border border-slate-300">
-                    <i class="fas fa-lock text-[10px]"></i>
-                    No Access
-                  </span>
+            <div data-locked-reason="${m.title}" class="flex items-center justify-between gap-3 bg-slate-50/80 border border-slate-200/70 rounded-xl p-3.5 opacity-70 cursor-not-allowed">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="w-10 h-10 rounded-xl bg-slate-200/70 text-slate-400 flex items-center justify-center text-base shrink-0">
+                  <i class="fas ${m.icon}"></i>
                 </div>
-                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">${m.badgeText}</div>
-                <h4 class="text-xl font-extrabold text-slate-700">${m.title}</h4>
-                <p class="text-xs font-medium text-slate-500 mt-2 leading-relaxed">${m.desc}</p>
+                <div class="min-w-0">
+                  <h4 class="text-sm font-bold text-slate-600 truncate">${m.title}</h4>
+                  <p class="text-[11px] text-slate-400 truncate mt-0.5">${m.desc}</p>
+                </div>
               </div>
-              <div class="pt-5 mt-5 border-t border-slate-200/70 flex items-center justify-between">
-                <span class="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
-                  <i class="fas fa-shield-halved text-slate-400"></i> Restricted
-                </span>
-                <span class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-500 bg-slate-200/80">
-                  <i class="fas fa-lock text-[10px]"></i>
+              <div class="shrink-0 pl-2">
+                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-500 bg-slate-200/70">
+                  <i class="fas fa-lock text-[9px]"></i>
                   <span>Locked</span>
                 </span>
               </div>
@@ -430,24 +415,23 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       if (!dashContainer) return;
 
       dashContainer.innerHTML = `
-        <div class="max-w-4xl mx-auto py-4 sm:py-6 space-y-6">
-          <!-- Hub Welcome Banner -->
-          <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-lg border border-slate-800 relative overflow-hidden">
-            <div class="absolute -right-10 -bottom-10 w-60 h-60 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
-            <div class="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-white/10 text-white/90 border border-white/15 backdrop-blur-sm mb-2">
-                  <i class="fas fa-shield-alt text-emerald-400"></i>
-                  <span>${escapeHtml(resolveInstitutionName(institutionConfig) || 'Institution')} Official Hub</span>
-                </div>
-                <h3 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Welcome, ${escapeHtml(userName)}</h3>
-                <p class="text-xs sm:text-sm text-slate-300 font-medium mt-1">Logged in as <b class="text-white">${escapeHtml(userRoleLabel)}</b>. Choose an access portal below to continue.</p>
+        <div class="max-w-2xl mx-auto py-2 sm:py-4 space-y-3">
+          <!-- Minimal Hub Welcome Strip -->
+          <div class="bg-slate-900 text-white rounded-xl px-4 py-3 shadow-xs border border-slate-800 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-[10px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                <i class="fas fa-shield-alt"></i>
+                <span class="truncate">${escapeHtml(resolveInstitutionName(institutionConfig) || 'Institution')} Hub</span>
               </div>
+              <h3 class="text-sm sm:text-base font-bold text-white truncate mt-0.5">Welcome, ${escapeHtml(userName)}</h3>
             </div>
+            <span class="shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/10 text-slate-200 border border-white/10">
+              ${escapeHtml(userRoleLabel)}
+            </span>
           </div>
 
-          <!-- Section: The 4 Portal Access Buttons -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <!-- Compact 4-Portal Access Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             ${moduleCardsHtml}
           </div>
         </div>`;

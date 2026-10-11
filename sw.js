@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fee-tracker-v12';
+const CACHE_NAME = 'fee-tracker-v13';
 const IMAGE_CACHE_NAME = 'fee-tracker-images-v1';
 const ASSETS_TO_CACHE = [
   './',
@@ -154,5 +154,72 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+  const data = event.data || {};
+  if (data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
+
+  if (data.type === 'SYNC_APP_BADGE') {
+    const count = Math.max(0, Number(data.count) || 0);
+    if ('setAppBadge' in self.navigator && 'clearAppBadge' in self.navigator) {
+      const promise = count > 0
+        ? self.navigator.setAppBadge(count).catch(() => {})
+        : self.navigator.clearAppBadge().catch(() => {});
+      if (event.waitUntil) event.waitUntil(promise);
+    }
+    return;
+  }
+
+  if (data.type === 'SHOW_SYSTEM_NOTIFICATION') {
+    const payload = data.payload || {};
+    const title = String(payload.title || 'New Notification');
+    const options = {
+      body: String(payload.body || ''),
+      icon: payload.icon || './assets/images/logo.png',
+      badge: payload.badge || './assets/images/logo.png',
+      tag: String(payload.tag || `notif-${Date.now()}`),
+      renotify: true,
+      vibrate: [200, 100, 200],
+      data: {
+        url: payload.url || './student.html',
+        target: payload.target || 'home-page',
+        notifId: payload.notifId || ''
+      }
+    };
+    if (self.Notification && self.Notification.permission === 'granted') {
+      const showPromise = self.registration.showNotification(title, options).catch(() => {});
+      if (event.waitUntil) event.waitUntil(showPromise);
+    }
+  }
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const notifData = event.notification.data || {};
+  const targetUrl = notifData.url || './student.html';
+  const targetTab = notifData.target || '';
+  const notifId = notifData.notifId || '';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.includes('student.html') && 'focus' in client) {
+          client.postMessage({
+            type: 'NOTIFICATION_CLICKED',
+            notifId,
+            target: targetTab
+          });
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        const hash = targetTab && !targetTab.includes('.html')
+          ? `#${targetTab.replace('-page', '')}`
+          : '';
+        return self.clients.openWindow(`${targetUrl}${hash}`);
+      }
+      return null;
+    })
+  );
 });

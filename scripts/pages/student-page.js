@@ -235,19 +235,167 @@ window.AppSession?.guardStudentPage?.();
         });
 
         // ----------------------------------------------------
-        // NOTIFICATION ENGINE LOGIC
+        // NOTIFICATION ENGINE LOGIC (WITH APP BADGE & PHONE PUSH ALERTS)
         // ----------------------------------------------------
         let notifState = { lastMarkedAllReadAt: 0, readIds: [] };
+        let notifStateLoaded = false;
         let rawSysNotifs = [];
         let rawNotices = [];
         let rawFeeAlerts = [];
         let rawResultAlerts = [];
         let latestMergedNotifications = [];
+        let baseDocumentTitle = document.title || 'Student Dashboard';
+
+        const getNotifiedPushStoreKey = () => `student_push_notified_v1_${window.AppSession?.getStudentId?.() || 'default'}`;
+        const getNotifiedPushSet = () => {
+            try {
+                const raw = localStorage.getItem(getNotifiedPushStoreKey());
+                const parsed = raw ? JSON.parse(raw) : null;
+                return Array.isArray(parsed) ? new Set(parsed) : null;
+            } catch (_e) {
+                return null;
+            }
+        };
+        const saveNotifiedPushSet = (idSet) => {
+            try {
+                const arr = Array.from(idSet).slice(-250);
+                localStorage.setItem(getNotifiedPushStoreKey(), JSON.stringify(arr));
+            } catch (_e) {}
+        };
+
+        const syncAppIconBadgeCount = (unreadCount = 0) => {
+            const count = Math.max(0, Number(unreadCount) || 0);
+            // 1. Update PWA App Icon Badge (Badging API)
+            if ('setAppBadge' in navigator && 'clearAppBadge' in navigator) {
+                if (count > 0) {
+                    navigator.setAppBadge(count).catch(() => {});
+                } else {
+                    navigator.clearAppBadge().catch(() => {});
+                }
+            }
+            // 2. Sync with Service Worker for background persistence
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                navigator.serviceWorker.controller.postMessage({
+                    type: 'SYNC_APP_BADGE',
+                    count
+                });
+            }
+            // 3. Update Document Title with unread count like WhatsApp Web / Mobile
+            const cleanBase = (document.getElementById('header-title')?.textContent?.trim() || baseDocumentTitle).replace(/^\(\d+\+?\)\s*/, '');
+            document.title = count > 0 ? `(${count > 99 ? '99+' : count}) ${cleanBase}` : cleanBase;
+        };
+
+        const updatePhoneNotifyPermissionBanner = () => {
+            const banner = document.getElementById('student-notify-perm-banner');
+            if (!banner) return;
+            if (!('Notification' in window) || Notification.permission === 'granted') {
+                banner.classList.add('hidden');
+            } else {
+                banner.classList.remove('hidden');
+            }
+        };
+
+        const requestPhoneNotificationPermission = async () => {
+            if (!('Notification' in window)) return false;
+            if (Notification.permission === 'granted') {
+                updatePhoneNotifyPermissionBanner();
+                return true;
+            }
+            try {
+                const status = await Notification.requestPermission();
+                updatePhoneNotifyPermissionBanner();
+                return status === 'granted';
+            } catch (_e) {
+                return false;
+            }
+        };
+
+        const triggerPhoneSystemNotification = async (item) => {
+            if (!('Notification' in window) || Notification.permission !== 'granted') return;
+            const logoSrc = document.getElementById('header-logo')?.getAttribute('src') || './assets/images/logo.png';
+            const payload = {
+                title: item.title || 'New School Update',
+                body: item.message || 'Tap to view details in Student Dashboard.',
+                icon: logoSrc,
+                badge: logoSrc,
+                tag: `stu-notif-${item.id}`,
+                url: './student.html',
+                target: item.target || 'home-page',
+                notifId: item.id
+            };
+
+            try {
+                if ('serviceWorker' in navigator) {
+                    const reg = await navigator.serviceWorker.ready;
+                    if (reg && typeof reg.showNotification === 'function') {
+                        await reg.showNotification(payload.title, {
+                            body: payload.body,
+                            icon: payload.icon,
+                            badge: payload.badge,
+                            tag: payload.tag,
+                            renotify: true,
+                            vibrate: [200, 100, 200],
+                            data: {
+                                url: payload.url,
+                                target: payload.target,
+                                notifId: payload.notifId
+                            }
+                        });
+                        return;
+                    }
+                }
+                const n = new Notification(payload.title, {
+                    body: payload.body,
+                    icon: payload.icon,
+                    tag: payload.tag
+                });
+                n.onclick = () => {
+                    window.focus();
+                    window.handleNotifyClick(item.id, item.target || '');
+                    n.close();
+                };
+            } catch (_err) {}
+        };
+
+        const dispatchNewPhoneNotifications = (unreadItems = []) => {
+            if (!notifStateLoaded) return;
+            const existingSet = getNotifiedPushSet();
+            // First time on this device for this student: seed current unread notices/alerts,
+            // and if there is a brand-new notice/alert from the last 24 hours, notify the phone once.
+            if (!existingSet) {
+                const initialSet = new Set();
+                const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+                let latestRecent = null;
+                unreadItems.forEach((item) => {
+                    initialSet.add(item.id);
+                    if (!latestRecent && item.timestamp >= oneDayAgo) {
+                        latestRecent = item;
+                    }
+                });
+                saveNotifiedPushSet(initialSet);
+                if (latestRecent) {
+                    triggerPhoneSystemNotification(latestRecent);
+                }
+                return;
+            }
+
+            const newItems = unreadItems.filter((item) => !existingSet.has(item.id));
+            if (!newItems.length) return;
+
+            newItems.forEach((item) => existingSet.add(item.id));
+            saveNotifiedPushSet(existingSet);
+
+            // Dispatch up to 3 newest alerts to avoid flooding the phone status bar
+            newItems.slice(0, 3).forEach((item) => {
+                triggerPhoneSystemNotification(item);
+            });
+        };
 
         const toggleNotifyPanel = (show) => {
             const panel = document.getElementById('student-notify-panel');
             const backdrop = document.getElementById('student-notify-backdrop');
             if (!panel || !backdrop) return;
+            if (show) updatePhoneNotifyPermissionBanner();
             panel.classList.toggle('active', Boolean(show));
             backdrop.classList.toggle('opacity-0', !show);
             backdrop.classList.toggle('pointer-events-none', !show);
@@ -320,7 +468,8 @@ window.AppSession?.guardStudentPage?.();
             rawNotices.forEach((notice = {}, idx) => {
                 const heading = notice.heading || notice.title || 'Update';
                 const text = notice.text || notice.content || '';
-                const baseKey = notice.id || `${heading}|${notice.date || ''}|${text}`;
+                const dateStr = notice.date || '';
+                const baseKey = notice.id || `${heading}|${dateStr}|${text}`;
                 const fallbackTs = Number(notice.createdAt || notice.updatedAt || notice.pinnedAt || 0)
                     || (notice.date ? new Date(notice.date).getTime() : 0)
                     || (1704067200000 + (stableNotificationHash(baseKey).split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0) * 1000));
@@ -328,10 +477,13 @@ window.AppSession?.guardStudentPage?.();
                     id: `notice-new-${stableNotificationHash(baseKey)}`,
                     type: 'notice',
                     icon: 'fa-bullhorn',
-                    title: `New Notice: ${heading}`,
+                    title: `Notice: ${heading}`,
+                    heading,
+                    date: dateStr,
+                    pinned: Boolean(notice.pinned),
                     message: text,
                     timestamp: getNoticeTimestamp({ ...notice, createdAt: fallbackTs }, idx, 'createdAt'),
-                    target: 'index.html#notices'
+                    target: 'notice-modal'
                 });
                 if (notice.pinned === true) {
                     alerts.push({
@@ -339,9 +491,12 @@ window.AppSession?.guardStudentPage?.();
                         type: 'notice',
                         icon: 'fa-thumbtack',
                         title: `Pinned Notice: ${heading}`,
+                        heading,
+                        date: dateStr,
+                        pinned: true,
                         message: text || 'An important notice has been pinned on the public page.',
                         timestamp: getNoticeTimestamp({ ...notice, pinnedAt: fallbackTs }, idx, 'pinnedAt'),
-                        target: 'index.html#notices'
+                        target: 'notice-modal'
                     });
                 }
             });
@@ -356,18 +511,19 @@ window.AppSession?.guardStudentPage?.();
                 if (!activeYear) return true;
                 return (result.academicYear || profile?.academicYear || '') === activeYear;
             });
-            visibleResults.forEach((result, idx) => {
+            visibleResults.forEach((result) => {
                 const resultClass = result.classLabel || classByYear[result.academicYear] || classLabel;
                 if (resultCenterSettings.blockedClasses?.includes(resultClass)) return;
                 const examLabel = getStudentResultExamLabel(result);
                 const academicYear = result.academicYear || profile?.academicYear || '--';
+                const parsedTs = typeof result.updatedAt === 'string' ? new Date(result.updatedAt).getTime() : Number(result.publishedAt || result.updatedAt || 0);
                 alerts.push({
                     id: `result-published-${result.id || stableNotificationHash(`${result.studentId || studentId}|${academicYear}|${examLabel}`)}`,
                     type: 'result',
                     icon: 'fa-square-poll-vertical',
                     title: `${examLabel} Result Published`,
                     message: `${academicYear} academic year result is now available for ${resultClass || 'your class'}.`,
-                    timestamp: Number(result.publishedAt || result.updatedAt || 0) || 0,
+                    timestamp: (Number.isFinite(parsedTs) && parsedTs > 0) ? parsedTs : Date.now(),
                     target: 'results-page'
                 });
             });
@@ -383,7 +539,7 @@ window.AppSession?.guardStudentPage?.();
                     icon: 'fa-hourglass-half',
                     title: 'Result Countdown Started',
                     message: `${examLabel} result countdown has started. Scheduled publish time: ${publishLabel}.`,
-                    timestamp: Number(resultCenterSettings.countdownStartedAt || resultCenterSettings.updatedAt || 0) || (Number.isFinite(publishTs) ? publishTs : 0),
+                    timestamp: Number(resultCenterSettings.countdownStartedAt || resultCenterSettings.updatedAt || 0) || (Number.isFinite(publishTs) ? publishTs : Date.now()),
                     target: 'results-page'
                 });
             }
@@ -398,7 +554,7 @@ window.AppSession?.guardStudentPage?.();
                 if (n.audience === 'students' || n.audience === 'all' || (n.audience === 'specific' && n.audienceIds?.includes(studentId))) {
                     allNotifs.push({
                         id: n.id, type: 'sys', icon: n.icon || 'fa-info-circle',
-                        title: n.title, message: n.message, timestamp: n.createdAt || 0,
+                        title: n.title, message: n.message, timestamp: n.createdAt || Date.now(),
                         target: n.target || 'home-page'
                     });
                 }
@@ -411,88 +567,153 @@ window.AppSession?.guardStudentPage?.();
                 return acc;
             }, []).sort((a, b) => b.timestamp - a.timestamp);
             latestMergedNotifications = merged;
-            const visibleNotifications = merged.filter((notification) => {
+
+            // Mark each notification read/unread accurately
+            merged.forEach((notification) => {
                 const isRead = notification.type === 'fee'
                     ? false
-                    : (notification.timestamp <= notifState.lastMarkedAllReadAt || notifState.readIds.includes(notification.id));
+                    : (
+                        (notifState.lastMarkedAllReadAt > 0 && notification.timestamp <= notifState.lastMarkedAllReadAt) ||
+                        notifState.readIds.includes(notification.id)
+                    );
                 notification.isRead = isRead;
-                return !isRead;
             });
 
-            const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-            const shouldCountForBadge = (notification) => {
-                if (notification.type === 'fee') return true;
-                return Number(notification.timestamp || 0) >= oneWeekAgo;
-            };
-            let unreadCount = visibleNotifications.filter((notification) => shouldCountForBadge(notification)).length;
+            const unreadNotifications = merged.filter((n) => !n.isRead);
+            const unreadCount = unreadNotifications.length;
+
+            // Update header bell badge & panel badge & phone app icon badge
+            const badge = document.getElementById('student-notify-badge');
+            const panelCountBadge = document.getElementById('student-notify-panel-count');
+            const formattedCount = unreadCount > 99 ? '99+' : String(unreadCount);
+
+            if (unreadCount > 0) {
+                if (badge) {
+                    badge.textContent = formattedCount;
+                    badge.classList.remove('hidden');
+                }
+                if (panelCountBadge) {
+                    panelCountBadge.textContent = formattedCount;
+                    panelCountBadge.classList.remove('hidden');
+                }
+            } else {
+                badge?.classList.add('hidden');
+                panelCountBadge?.classList.add('hidden');
+            }
+
+            syncAppIconBadgeCount(unreadCount);
+            dispatchNewPhoneNotifications(unreadNotifications);
+
             const listContainer = document.getElementById('student-notify-list');
+            if (!listContainer) return;
             listContainer.innerHTML = '';
             
-            if(visibleNotifications.length === 0) {
+            if (merged.length === 0) {
                 listContainer.innerHTML = `<div class="notify-empty-state"><i class="fas fa-bell-slash"></i><span>No notifications yet</span></div>`;
-                document.getElementById('student-notify-badge').classList.add('hidden');
                 return;
             }
+
+            // Show unread notifications first, followed by recent read notifications so notices are always accessible
+            const displayList = [
+                ...unreadNotifications,
+                ...merged.filter((n) => n.isRead).slice(0, 20)
+            ];
 
             const todayStart = new Date().setHours(0,0,0,0);
             const yesterdayStart = todayStart - 86400000;
             let currentGroup = '';
 
-            visibleNotifications.forEach(n => {
+            displayList.forEach(n => {
+                let groupLabel = n.isRead ? 'Earlier (Read)' : 'Older';
+                if (!n.isRead) {
+                    if (n.timestamp >= todayStart) groupLabel = 'New Today';
+                    else if (n.timestamp >= yesterdayStart) groupLabel = 'Yesterday';
+                    else groupLabel = 'Unread';
+                }
 
-                let groupLabel = 'Older';
-                if(n.timestamp >= todayStart) groupLabel = 'Today';
-                else if(n.timestamp >= yesterdayStart) groupLabel = 'Yesterday';
-
-                if(groupLabel !== currentGroup) {
+                if (groupLabel !== currentGroup) {
                     currentGroup = groupLabel;
                     listContainer.innerHTML += `<div class="notify-group-label">${groupLabel}</div>`;
                 }
 
                 const iconClass = n.type === 'sys' ? 'sys' : (n.type === 'fee' ? 'fee' : (n.type === 'result' ? 'result' : 'notice'));
-                const timeAgoStr = n.timestamp ? new Date(n.timestamp).toLocaleDateString('en-GB', { day:'2-digit', month:'short' }) : 'Just now';
+                const timeAgoStr = n.timestamp ? new Date(n.timestamp).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year: 'numeric' }) : 'Just now';
 
-                const showUnreadDot = !n.isRead && shouldCountForBadge(n);
                 listContainer.innerHTML += `
-                    <button type="button" class="notify-item ${n.isRead ? '' : 'unread'}" data-notification-id="${escapeHtml(n.id)}" data-notification-target="${escapeHtml(n.target || '')}">
+                    <button type="button" class="notify-item ${n.isRead ? 'opacity-75' : 'unread'}" data-notification-id="${escapeHtml(n.id)}" data-notification-target="${escapeHtml(n.target || '')}">
                         <div class="notify-icon ${iconClass}"><i class="fas ${n.icon}"></i></div>
                         <div class="notify-content">
                             <div class="notify-title">${escapeHtml(n.title)}</div>
-                            <div class="notify-msg">${escapeHtml(n.message)}</div>
+                            <div class="notify-msg line-clamp-2">${escapeHtml(n.message)}</div>
                             <div class="notify-time"><i class="far fa-clock text-[9px]"></i> ${timeAgoStr}</div>
                         </div>
-                        ${showUnreadDot ? `<div class="notify-unread-dot"></div>` : ''}
+                        ${!n.isRead ? `<div class="notify-unread-dot"></div>` : ''}
                     </button>
                 `;
             });
-
-            const badge = document.getElementById('student-notify-badge');
-            if (unreadCount > 0) {
-                badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
-                badge.classList.remove('hidden');
-            } else {
-                badge.classList.add('hidden');
-            }
         };
 
         window.handleNotifyClick = async (notifId, targetStr) => {
             const notification = latestMergedNotifications.find((item) => item.id === notifId);
-            if (notification?.type === 'fee') {
-                renderNotificationPanel();
-            } else if (!notifState.readIds.includes(notifId)) {
+            if (notification && notification.type !== 'fee' && !notifState.readIds.includes(notifId)) {
                 notifState.readIds.push(notifId);
-                if(notifState.readIds.length > 150) notifState.readIds.shift();
+                if (notifState.readIds.length > 200) notifState.readIds.shift();
                 renderNotificationPanel();
                 try {
                     await setDoc(doc(db, BASE_PATH + '/studentNotificationState', studentId), {
                         readIds: notifState.readIds
                     }, { merge: true });
                 } catch(e) { console.warn('Failed to update read state', e); }
+            } else {
+                renderNotificationPanel();
             }
+
             toggleNotifyPanel(false);
+
+            // If it is a notice or system notification, display full notice content directly inside student dashboard modal
+            if (notification && (notification.type === 'notice' || targetStr === 'notice-modal')) {
+                const dateBadge = notification.date
+                    ? `<div class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full mb-3"><i class="far fa-calendar-alt"></i> ${escapeHtml(notification.date)}</div>`
+                    : '';
+                const pinnedBadge = notification.pinned
+                    ? `<span class="inline-flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full mb-3 ml-1.5"><i class="fas fa-thumbtack"></i> Pinned</span>`
+                    : '';
+                const bodyHtml = `
+                    <div class="space-y-3">
+                        <div>${dateBadge}${pinnedBadge}</div>
+                        <div class="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap break-words bg-slate-50 p-4 rounded-xl border border-slate-200/80">${escapeHtml(notification.message || 'No additional details.')}</div>
+                        <div class="pt-2 flex justify-end">
+                            <a href="index.html#notices" class="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
+                                <i class="fas fa-external-link-alt"></i> View All Public Notices
+                            </a>
+                        </div>
+                    </div>
+                `;
+                openStudentDetailModal(notification.heading || notification.title || 'Notice Details', bodyHtml);
+                return;
+            }
+
             if (targetStr && targetStr.includes('.html')) window.location.href = targetStr;
             else if (targetStr) activateStudentTab(targetStr);
         };
+
+        document.getElementById('student-enable-phone-notify-btn')?.addEventListener('click', async () => {
+            await requestPhoneNotificationPermission();
+        });
+
+        // Listen for clicks from Service Worker system notifications
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                if (event.data?.type === 'NOTIFICATION_CLICKED') {
+                    const { notifId, target } = event.data;
+                    if (notifId) {
+                        window.handleNotifyClick(notifId, target || '');
+                    } else if (target) {
+                        activateStudentTab(target);
+                    }
+                }
+            });
+        }
 
         document.getElementById('student-notify-mark-all')?.addEventListener('click', async () => {
             const nonFeeIds = latestMergedNotifications
@@ -2632,8 +2853,12 @@ window.AppSession?.guardStudentPage?.();
                         notifState.lastMarkedAllReadAt = data.lastMarkedAllReadAt || 0;
                         notifState.readIds = data.readIds || [];
                     }
+                    notifStateLoaded = true;
                     if(window.triggerNotificationUpdate) window.triggerNotificationUpdate();
-                }, (err) => console.warn('Notification state listener warning:', err));
+                }, (err) => {
+                    notifStateLoaded = true;
+                    console.warn('Notification state listener warning:', err);
+                });
 
                 onSnapshot(doc(db, `${BASE_PATH}/settings`, 'config'), snap => {
                     const conf = snap.exists() ? snap.data() : {};

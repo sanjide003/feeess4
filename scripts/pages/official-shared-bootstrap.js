@@ -8,6 +8,8 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
     let studentGroups = [];
     let directoryEntries = [];
     let directoryCategories = [];
+    let academicYears = [];
+    let activeAcademicYearId = '';
     let institutionConfig = {};
     let categoryAuthConfig = { categories: {} };
     let pageAccessConfig = { categories: {}, overrides: {} };
@@ -17,7 +19,73 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
     
     applyCachedInstitutionLogo(['header-logo', 'official-login-modal-logo']);
 
-    const officialFilters = { studentClass: '', studentGender: 'ALL', studentInfo: 'ALL', studentSearch: '', staffType: 'ALL', staffStatus: 'ALL', staffSearch: '' };
+    const officialFilters = {
+      academicYearId: '',
+      studentClass: 'ALL',
+      studentGender: 'ALL',
+      studentStatus: 'ALL',
+      studentInfo: 'ALL',
+      studentSearch: '',
+      studentPage: 1,
+      studentPageSize: 25,
+      staffType: 'ALL',
+      staffStatus: 'ALL',
+      staffSearch: ''
+    };
+
+    const hasValidAvatarImage = (obj = {}) => {
+      const raw = obj?.photo || obj?.image || obj?.photoUrl || obj?.photo_url || obj?.avatar || obj?.customValues?.photo || '';
+      if (!raw || typeof raw !== 'string') return false;
+      const trimmed = raw.trim();
+      return trimmed !== '' && !trimmed.includes('assets/images/logo.png');
+    };
+
+    const getPersonInitials = (name = '') => {
+      const clean = String(name || '').trim();
+      if (!clean) return 'U';
+      const parts = clean.split(/\s+/).filter(Boolean);
+      if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+      return clean.slice(0, 2).toUpperCase();
+    };
+
+    const renderAvatarMarkup = (obj = {}, name = '', sizeClass = 'w-9 h-9 rounded-xl text-xs') => {
+      const initials = escapeHtml(getPersonInitials(name || obj?.name || 'User'));
+      const gender = String(obj?.gender || '').trim().toLowerCase();
+      const toneClass = gender === 'female'
+        ? 'bg-pink-100 text-pink-700 border-pink-200'
+        : 'bg-indigo-100 text-indigo-700 border-indigo-200';
+      if (hasValidAvatarImage(obj)) {
+        const photoUrl = getPhoto(obj);
+        return `
+          <div class="relative ${sizeClass} overflow-hidden border border-slate-200 bg-slate-100 flex-shrink-0 mx-auto">
+            <img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(name || 'Avatar')}" class="w-full h-full object-cover" onerror="this.style.display='none';this.nextElementSibling.classList.remove('hidden');">
+            <div class="hidden w-full h-full flex items-center justify-center font-extrabold ${toneClass}">${initials}</div>
+          </div>`;
+      }
+      return `<div class="${sizeClass} border ${toneClass} flex items-center justify-center font-extrabold flex-shrink-0 mx-auto select-none" title="${escapeHtml(name || 'User')}">${initials}</div>`;
+    };
+
+    const getStudentForSelectedYear = (student = {}) => {
+      const selectedYear = officialFilters.academicYearId || activeAcademicYearId;
+      if (!selectedYear || (activeAcademicYearId && selectedYear === activeAcademicYearId)) {
+        const isGraduatedInActive = String(student.class || '').toUpperCase() === 'GRADUATED';
+        if (isGraduatedInActive) return null;
+        return student;
+      }
+      const yearRecord = student.academicYears?.[selectedYear];
+      if (!yearRecord) return null;
+      return {
+        ...student,
+        class: yearRecord.class || student.class,
+        status: yearRecord.status || student.status,
+        isActive: yearRecord.status ? yearRecord.status === 'active' : student.isActive,
+        concessionFee: yearRecord.concessionFee !== undefined ? yearRecord.concessionFee : student.concessionFee
+      };
+    };
+
+    const getStudentsForCurrentAcademicYear = () => {
+      return allStudents.map(getStudentForSelectedYear).filter(Boolean);
+    };
 
     // ==========================================
     // EXCEL SPREADSHEET BUILDER CONFIG
@@ -152,18 +220,21 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
         return;
       }
 
-      const defaultTab = isWorksheetPage ? 'students' : 'dashboard';
+      const defaultTab = isWorksheetPage ? 'summary' : 'dashboard';
       const requested = document.getElementById(`official-tab-${tab}`) ? tab : defaultTab;
       const target = document.getElementById(`official-tab-${requested}`) ? requested : defaultTab;
       document.querySelectorAll('.official-tab').forEach((el) => el.classList.add('hidden'));
       
+      const pageContentWrap = document.getElementById('page-content');
       const targetEl = document.getElementById(`official-tab-${target}`);
       if(targetEl) {
           targetEl.classList.remove('hidden');
           if (target === 'export') {
-              targetEl.classList.add('flex'); 
+              targetEl.classList.add('flex');
+              pageContentWrap?.classList.add('hidden');
           } else {
               document.getElementById('official-tab-export')?.classList.remove('flex');
+              pageContentWrap?.classList.remove('hidden');
           }
       }
 
@@ -478,10 +549,9 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
 
     const buildStudentDetailHtml = (student = {}) => {
       const group = getStudentGroup(student.id);
-      const photoUrl = getPhoto(student);
       const status = getStudentStatus(student);
 
-      const knownKeys = ['id', 'photo', 'image', 'photoUrl', 'photo_url', 'avatar', 'class', 'uid', 'name', 'father', 'mother', 'gender', 'adm', 'dob', 'adm_date', 'admDate', 'status', 'adhaar', 'aadhaar', 'aadhar', 'mobile', 'phone', 'fatherMobile', 'motherMobile', 'mother_mobile', 'address', 'concessionFee', 'busStop', 'busFee', 'route', 'remarks'];
+      const knownKeys = ['id', 'photo', 'image', 'photoUrl', 'photo_url', 'avatar', 'class', 'uid', 'name', 'father', 'mother', 'gender', 'adm', 'dob', 'adm_date', 'admDate', 'status', 'adhaar', 'aadhaar', 'aadhar', 'mobile', 'phone', 'fatherMobile', 'motherMobile', 'mother_mobile', 'address', 'concessionFee', 'busStop', 'busFee', 'route', 'remarks', 'academicYears'];
       const extraFields = Object.entries(student || {}).filter(([k, v]) => !knownKeys.includes(k) && v !== null && v !== undefined && String(v).trim() !== '');
 
       const fatherPhone = student.mobile || student.phone || student.fatherMobile || '';
@@ -489,13 +559,14 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       const uidVal = student.uid || student.id || '--';
       const admDateVal = student.adm_date || student.admDate || '--';
       const adhaarVal = student.adhaar || student.aadhaar || student.aadhar || '--';
+      const avatarHtml = renderAvatarMarkup(student, student.name, 'w-20 h-20 rounded-2xl text-2xl');
 
       return `
         <div class="space-y-4">
           <!-- Header Banner with Student Avatar -->
           <div class="flex flex-col sm:flex-row items-center sm:items-start gap-4 p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white shadow-md">
-            <div class="relative w-20 h-20 rounded-2xl overflow-hidden border-2 border-white/20 bg-slate-800 flex-shrink-0 shadow">
-              <img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(student.name || 'Student')}" class="w-full h-full object-cover" onerror="this.onerror=null;this.src='assets/images/logo.png'">
+            <div class="flex-shrink-0">
+              ${avatarHtml}
             </div>
             <div class="text-center sm:text-left flex-1 min-w-0">
               <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-1">
@@ -514,15 +585,15 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
           <div class="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
             <button type="button" class="modal-nav-tab active" data-stu-tab="personal">
               <i class="fas fa-user-circle"></i>
-              <span>1. Personal Details (വ്യക്തിവിവരം)</span>
+              <span>1. Personal Details</span>
             </button>
             <button type="button" class="modal-nav-tab" data-stu-tab="academic">
               <i class="fas fa-graduation-cap"></i>
-              <span>2. Academic Details (അക്കാദമിക്)</span>
+              <span>2. Academic Details</span>
             </button>
             <button type="button" class="modal-nav-tab" data-stu-tab="fee">
               <i class="fas fa-receipt"></i>
-              <span>3. Fee & Services (ഫീസ് വിവരങ്ങൾ)</span>
+              <span>3. Fee & Services</span>
             </button>
           </div>
 
@@ -666,57 +737,249 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       });
     };
 
-    const renderStudents = () => {
-      const classOptions = [...new Set(allStudents.map(getStudentClass))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-      const hasSelectedClass = Boolean(officialFilters.studentClass);
-      const filteredStudents = hasSelectedClass ? allStudents
+    const getFilteredStudentsList = () => {
+      const yearStudents = getStudentsForCurrentAcademicYear();
+      return yearStudents
         .filter((student) => {
           const cls = getStudentClass(student);
           const gender = normalizeText(student.gender);
-          const searchable = Object.values(student || {}).map(valueToDisplay).join(' ').toLowerCase();
+          const status = normalizeText(getStudentStatus(student));
+          const searchable = Object.entries(student || {})
+            .filter(([k]) => k !== 'photo' && k !== 'image' && k !== 'academicYears')
+            .map(([, v]) => valueToDisplay(v))
+            .join(' ')
+            .toLowerCase();
           const group = getStudentGroup(student.id);
-          const classOk = cls === officialFilters.studentClass;
+          const classOk = !officialFilters.studentClass || officialFilters.studentClass === 'ALL' || cls === officialFilters.studentClass;
           const genderOk = officialFilters.studentGender === 'ALL' || gender === normalizeText(officialFilters.studentGender);
+          const statusOk = officialFilters.studentStatus === 'ALL' || status === normalizeText(officialFilters.studentStatus);
           const searchOk = !officialFilters.studentSearch || searchable.includes(officialFilters.studentSearch.toLowerCase());
           const infoOk = officialFilters.studentInfo === 'ALL'
             || (officialFilters.studentInfo === 'GROUPED' && Boolean(group))
             || (officialFilters.studentInfo === 'CONCESSION' && hasStudentConcession(student))
             || (officialFilters.studentInfo === 'MISSING_MOBILE' && !student.mobile)
             || (officialFilters.studentInfo === 'MISSING_UID' && !student.uid);
-          return classOk && genderOk && searchOk && infoOk;
+          return classOk && genderOk && statusOk && searchOk && infoOk;
         })
-        .sort((a, b) => getStudentClass(a).localeCompare(getStudentClass(b), undefined, { numeric: true }) || String(a.name || '').localeCompare(String(b.name || ''))) : [];
-      const emptyStudentMessage = hasSelectedClass ? 'No students found for the selected class and filters' : 'Please select a class to view students';
+        .sort((a, b) => getStudentClass(a).localeCompare(getStudentClass(b), undefined, { numeric: true }) || String(a.name || '').localeCompare(String(b.name || '')));
+    };
 
-      const primaryColumns = ['class', 'adm', 'name', 'gender', 'uid', 'father', 'mobile'];
-      const hiddenSystemKeys = ['id', 'photo', 'image', 'photoUrl', 'photo_url', 'avatar', 'logo'];
-      const extraKeys = [...new Set(filteredStudents.flatMap((student) => Object.keys(student || {})))].filter((key) => !hiddenSystemKeys.includes(key) && !primaryColumns.includes(key));
-      const columns = [...primaryColumns, ...extraKeys];
-      const headerCells = columns.map((key) => `<th class="border p-2 whitespace-nowrap">${escapeHtml(toLabel(key))}</th>`).join('');
-      const rows = filteredStudents.map((student, index) => {
+    const exportStudentsToExcel = (studentsToExport = []) => {
+      if (typeof XLSX === 'undefined') {
+        openOfficialDetailModal('Export Notice', '<p class="text-sm text-slate-600 p-4">Excel library is still loading. Please try again in a moment.</p>');
+        return;
+      }
+      const rowsData = studentsToExport.map((s, idx) => {
+        const grp = getStudentGroup(s.id);
+        return {
+          'No': idx + 1,
+          'Class': s.class || '',
+          'UID / Roll No': s.uid || '',
+          'Student Name': s.name || '',
+          'Father Name': s.father || '',
+          'Mother Name': s.mother || '',
+          'Gender': s.gender || '',
+          'Adm No': s.adm || '',
+          'Date of Birth': s.dob || '',
+          'Admission Date': s.adm_date || s.admDate || '',
+          'Status': getStudentStatus(s),
+          'Aadhaar No': s.adhaar || s.aadhaar || s.aadhar || '',
+          'Father Mobile': s.mobile || s.phone || '',
+          'Mother Mobile': s.motherMobile || s.mother_mobile || '',
+          'Concession Fee': hasStudentConcession(s) ? s.concessionFee : '',
+          'Group Info': grp ? `Group (${grp.fee || 0})` : '',
+          'Address': s.address || ''
+        };
+      });
+      const ws = XLSX.utils.json_to_sheet(rowsData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Students Register');
+      const yearLabel = officialFilters.academicYearId || activeAcademicYearId || 'Current';
+      const classLabel = officialFilters.studentClass && officialFilters.studentClass !== 'ALL' ? `Class_${officialFilters.studentClass}` : 'All_Classes';
+      XLSX.writeFile(wb, `Students_Register_${yearLabel}_${classLabel}.xlsx`);
+    };
+
+    const printStudentsRegisterPdf = (studentsToPrint = []) => {
+      const instName = resolveInstitutionName(institutionConfig) || 'Institution Official Portal';
+      const yearObj = academicYears.find((y) => y.id === (officialFilters.academicYearId || activeAcademicYearId));
+      const yearTitle = yearObj ? (yearObj.name || yearObj.id) : (officialFilters.academicYearId || activeAcademicYearId || 'Current Academic Year');
+      const classTitle = (!officialFilters.studentClass || officialFilters.studentClass === 'ALL') ? 'All Classes' : `Class ${officialFilters.studentClass}`;
+
+      let printContainer = document.getElementById('students-register-print-area');
+      if (!printContainer) {
+        printContainer = document.createElement('div');
+        printContainer.id = 'students-register-print-area';
+        printContainer.className = 'hidden';
+        document.body.appendChild(printContainer);
+      }
+
+      printContainer.innerHTML = `
+        <div class="p-4 bg-white text-slate-900">
+          <div class="text-center border-b-2 border-slate-800 pb-3 mb-4">
+            <h1 class="text-xl font-black uppercase">${escapeHtml(instName)}</h1>
+            <p class="text-xs font-bold text-slate-600 mt-0.5">Students Register • Academic Year: ${escapeHtml(yearTitle)} • ${escapeHtml(classTitle)} (${studentsToPrint.length} Students)</p>
+          </div>
+          <table class="w-full text-[10px] border-collapse border border-slate-400">
+            <thead>
+              <tr class="bg-slate-100">
+                <th class="border border-slate-400 p-1">No</th>
+                <th class="border border-slate-400 p-1">Class</th>
+                <th class="border border-slate-400 p-1">UID</th>
+                <th class="border border-slate-400 p-1 text-left">Student Name</th>
+                <th class="border border-slate-400 p-1 text-left">Father Name</th>
+                <th class="border border-slate-400 p-1 text-left">Mother Name</th>
+                <th class="border border-slate-400 p-1">Gender</th>
+                <th class="border border-slate-400 p-1">Adm No</th>
+                <th class="border border-slate-400 p-1">DOB</th>
+                <th class="border border-slate-400 p-1">Adm Date</th>
+                <th class="border border-slate-400 p-1">Status</th>
+                <th class="border border-slate-400 p-1">Aadhaar</th>
+                <th class="border border-slate-400 p-1">Father Phone</th>
+                <th class="border border-slate-400 p-1">Mother Phone</th>
+                <th class="border border-slate-400 p-1 text-left">Address</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${studentsToPrint.map((s, idx) => `
+                <tr>
+                  <td class="border border-slate-400 p-1 text-center font-bold">${idx + 1}</td>
+                  <td class="border border-slate-400 p-1 text-center">${escapeHtml(s.class || '--')}</td>
+                  <td class="border border-slate-400 p-1 text-center">${escapeHtml(s.uid || '--')}</td>
+                  <td class="border border-slate-400 p-1 font-bold">${escapeHtml(s.name || '--')}</td>
+                  <td class="border border-slate-400 p-1">${escapeHtml(s.father || '--')}</td>
+                  <td class="border border-slate-400 p-1">${escapeHtml(s.mother || '--')}</td>
+                  <td class="border border-slate-400 p-1 text-center">${escapeHtml(s.gender || '--')}</td>
+                  <td class="border border-slate-400 p-1 text-center">${escapeHtml(s.adm || '--')}</td>
+                  <td class="border border-slate-400 p-1 text-center">${escapeHtml(s.dob || '--')}</td>
+                  <td class="border border-slate-400 p-1 text-center">${escapeHtml(s.adm_date || s.admDate || '--')}</td>
+                  <td class="border border-slate-400 p-1 text-center">${escapeHtml(getStudentStatus(s))}</td>
+                  <td class="border border-slate-400 p-1 text-center">${escapeHtml(s.adhaar || s.aadhaar || s.aadhar || '--')}</td>
+                  <td class="border border-slate-400 p-1 text-center">${escapeHtml(s.mobile || s.phone || '--')}</td>
+                  <td class="border border-slate-400 p-1 text-center">${escapeHtml(s.motherMobile || s.mother_mobile || '--')}</td>
+                  <td class="border border-slate-400 p-1">${escapeHtml(s.address || '--')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      const styleEl = document.createElement('style');
+      styleEl.id = 'students-register-print-style';
+      styleEl.textContent = `
+        @media print {
+          body.printing-students-register > *:not(#students-register-print-area) { display: none !important; }
+          body.printing-students-register #students-register-print-area { display: block !important; position: static !important; width: 100% !important; }
+        }
+      `;
+      document.head.appendChild(styleEl);
+      document.body.classList.add('printing-students-register');
+      window.print();
+      setTimeout(() => {
+        document.body.classList.remove('printing-students-register');
+        styleEl.remove();
+      }, 600);
+    };
+
+    const renderStudents = () => {
+      const yearStudents = getStudentsForCurrentAcademicYear();
+      const classOptions = [...new Set(yearStudents.map(getStudentClass))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      const filteredStudents = getFilteredStudentsList();
+
+      const totalCount = filteredStudents.length;
+      const pageSize = officialFilters.studentPageSize === 0 ? Math.max(1, totalCount) : Number(officialFilters.studentPageSize || 25);
+      const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+      if (officialFilters.studentPage > totalPages) officialFilters.studentPage = totalPages;
+      if (officialFilters.studentPage < 1) officialFilters.studentPage = 1;
+
+      const startIdx = totalCount === 0 ? 0 : (officialFilters.studentPage - 1) * pageSize;
+      const endIdx = totalCount === 0 ? 0 : Math.min(startIdx + pageSize, totalCount);
+      const paginatedStudents = filteredStudents.slice(startIdx, endIdx);
+
+      const coreAdminColumns = [
+        { key: 'class', label: 'Class' },
+        { key: 'uid', label: 'UID' },
+        { key: 'name', label: 'Student Name' },
+        { key: 'father', label: 'Father Name' },
+        { key: 'mother', label: 'Mother Name' },
+        { key: 'gender', label: 'Gender' },
+        { key: 'adm', label: 'Adm No' },
+        { key: 'dob', label: 'DOB' },
+        { key: 'adm_date', label: 'Admission Date' },
+        { key: 'status', label: 'Status' },
+        { key: 'adhaar', label: 'Aadhaar No' },
+        { key: 'mobile', label: 'Father Mobile' },
+        { key: 'motherMobile', label: 'Mother Mobile' },
+        { key: 'concessionFee', label: 'Concession' },
+        { key: 'address', label: 'Address' }
+      ];
+
+      const hiddenSystemKeys = new Set([
+        'id', 'photo', 'image', 'photoUrl', 'photo_url', 'avatar', 'logo',
+        'academicYears', 'isActive', 'left', 'admDate', 'aadhaar', 'aadhar',
+        'phone', 'fatherMobile', 'mother_mobile',
+        ...coreAdminColumns.map((c) => c.key)
+      ]);
+      const extraKeys = [...new Set(filteredStudents.flatMap((student) => Object.keys(student || {})))].filter((key) => !hiddenSystemKeys.has(key));
+
+      const headerCells = [
+        ...coreAdminColumns.map((col) => `<th class="border border-slate-200 px-2.5 py-2 whitespace-nowrap text-left font-extrabold text-slate-700">${escapeHtml(col.label)}</th>`),
+        ...extraKeys.map((key) => `<th class="border border-slate-200 px-2.5 py-2 whitespace-nowrap text-left font-extrabold text-slate-700">${escapeHtml(toLabel(key))}</th>`)
+      ].join('');
+
+      const getStudentColValue = (student, key) => {
+        if (key === 'status') return getStudentStatus(student);
+        if (key === 'adm_date') return student.adm_date || student.admDate || '--';
+        if (key === 'adhaar') return student.adhaar || student.aadhaar || student.aadhar || '--';
+        if (key === 'mobile') return student.mobile || student.phone || student.fatherMobile || '--';
+        if (key === 'motherMobile') return student.motherMobile || student.mother_mobile || '--';
+        if (key === 'concessionFee') return hasStudentConcession(student) ? `₹${student.concessionFee}` : '--';
+        const val = valueToDisplay(student?.[key]);
+        return val !== '' ? val : '--';
+      };
+
+      const rows = paginatedStudents.map((student, idx) => {
+        const serialNo = startIdx + idx + 1;
         const group = getStudentGroup(student.id);
-        const photoUrl = getPhoto(student);
-        return `<tr class="hover:bg-blue-50 cursor-pointer official-student-row transition-colors" data-student-id="${escapeHtml(student.id)}">
-          <td class="border p-2 text-center font-semibold text-slate-500">${index + 1}</td>
-          <td class="border p-1.5 text-center align-middle">
-            <img src="${escapeHtml(photoUrl)}" alt="Avatar" class="student-avatar-thumb mx-auto shadow-xs" onerror="this.onerror=null;this.src='assets/images/logo.png'">
+        const status = getStudentStatus(student);
+        return `<tr class="hover:bg-blue-50/80 cursor-pointer official-student-row transition-colors odd:bg-white even:bg-slate-50/40" data-student-id="${escapeHtml(student.id)}">
+          <td class="border border-slate-200 px-2.5 py-2 text-center font-extrabold text-slate-700">${serialNo}</td>
+          <td class="border border-slate-200 px-2 py-1.5 text-center align-middle">
+            ${renderAvatarMarkup(student, student.name, 'w-9 h-9 rounded-xl text-xs')}
           </td>
-          ${columns.map((key) => `<td class="border p-2 align-middle">${escapeHtml(valueToDisplay(student?.[key]))}</td>`).join('')}
-          <td class="border p-2 align-middle">${group ? `<span class="badge">Group ₹${escapeHtml(String(group.fee || 0))}</span>` : '-'}</td>
+          ${coreAdminColumns.map((col) => {
+            const val = getStudentColValue(student, col.key);
+            if (col.key === 'name') {
+              return `<td class="border border-slate-200 px-2.5 py-2 align-middle font-extrabold text-slate-900 whitespace-nowrap">${escapeHtml(val)}</td>`;
+            }
+            if (col.key === 'class') {
+              return `<td class="border border-slate-200 px-2.5 py-2 align-middle text-center"><span class="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold text-xs">${escapeHtml(val)}</span></td>`;
+            }
+            if (col.key === 'status') {
+              return `<td class="border border-slate-200 px-2.5 py-2 align-middle text-center"><span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}">${escapeHtml(status)}</span></td>`;
+            }
+            if (col.key === 'address') {
+              return `<td class="border border-slate-200 px-2.5 py-2 align-middle min-w-[180px] max-w-[260px] truncate" title="${escapeHtml(val)}">${escapeHtml(val)}</td>`;
+            }
+            return `<td class="border border-slate-200 px-2.5 py-2 align-middle whitespace-nowrap text-slate-700">${escapeHtml(val)}</td>`;
+          }).join('')}
+          ${extraKeys.map((key) => `<td class="border border-slate-200 px-2.5 py-2 align-middle whitespace-nowrap text-slate-700">${escapeHtml(getStudentColValue(student, key))}</td>`).join('')}
+          <td class="border border-slate-200 px-2.5 py-2 align-middle whitespace-nowrap">${group ? `<span class="badge">Group ₹${escapeHtml(String(group.fee || 0))}</span>` : '--'}</td>
         </tr>`;
       }).join('');
 
-      const cardRows = filteredStudents.map((student) => {
-        const photoUrl = getPhoto(student);
+      const cardRows = paginatedStudents.map((student, idx) => {
+        const serialNo = startIdx + idx + 1;
         return `
           <button type="button" class="official-student-card flex items-center gap-3 p-3.5 text-left w-full border border-slate-200 bg-white rounded-2xl shadow-xs hover:border-blue-400 hover:shadow-md transition-all mb-2" data-student-id="${escapeHtml(student.id)}">
-            <img src="${escapeHtml(photoUrl)}" alt="Avatar" class="w-12 h-12 rounded-xl object-cover border border-slate-200 bg-slate-50 flex-shrink-0" onerror="this.onerror=null;this.src='assets/images/logo.png'">
+            <span class="w-6 text-center font-extrabold text-xs text-slate-400">${serialNo}</span>
+            ${renderAvatarMarkup(student, student.name, 'w-11 h-11 rounded-xl text-sm')}
             <div class="flex-1 min-w-0">
               <div class="flex items-center justify-between gap-1.5 mb-0.5">
                 <span class="font-extrabold text-slate-900 text-sm truncate">${escapeHtml(student.name || '--')}</span>
                 <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 whitespace-nowrap">Class ${escapeHtml(student.class || '--')}</span>
               </div>
-              <div class="text-xs text-slate-500">Adm: <b class="text-slate-700">${escapeHtml(student.adm || '--')}</b> • ${escapeHtml(student.father ? `Father: ${student.father}` : (student.mobile || 'No contact'))}</div>
+              <div class="text-xs text-slate-500">Adm: <b class="text-slate-700">${escapeHtml(student.adm || '--')}</b> • UID: <b class="text-slate-700">${escapeHtml(student.uid || '--')}</b> • ${escapeHtml(student.father ? `Father: ${student.father}` : (student.mobile || 'No contact'))}</div>
             </div>
             <i class="fas fa-chevron-right text-xs text-slate-300 ml-1"></i>
           </button>`;
@@ -725,30 +988,202 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       const stuTarget = document.getElementById('official-tab-students');
       if (!stuTarget) return;
 
+      const selectedYearValue = officialFilters.academicYearId || activeAcademicYearId || '';
+      const yearOptionsHtml = academicYears.length
+        ? academicYears.map((y) => `<option value="${escapeHtml(y.id)}" ${selectedYearValue === y.id ? 'selected' : ''}>Academic Year: ${escapeHtml(y.name || y.id)}${y.id === activeAcademicYearId ? ' (Active)' : ''}</option>`).join('')
+        : `<option value="">Current Academic Year</option>`;
+
+      const emptyStudentMessage = 'No student records match the selected filters.';
+
       stuTarget.innerHTML = `
-        <div class="card p-2 sm:p-4 rounded-2xl shadow-sm w-full">
-          <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div class="card p-3 sm:p-5 rounded-2xl shadow-sm w-full max-w-none">
+          <!-- Top Header & Export Buttons -->
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
             <div>
-              <h3 class="font-extrabold text-lg text-slate-900">Students Register</h3>
-              <p class="text-xs text-slate-500 font-semibold">Select class to view student profiles with photo avatars. Click any row or card for full 15-field details.</p>
+              <h3 class="font-extrabold text-lg text-slate-900 flex items-center gap-2">
+                <i class="fas fa-user-graduate text-blue-600"></i>
+                <span>Students Register</span>
+                <span class="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">${totalCount} Students</span>
+              </h3>
+              <p class="text-xs text-slate-500 font-semibold mt-0.5">Complete admin-entered student details with Academic Year filter, pagination, and Excel/PDF export.</p>
             </div>
-            <span class="text-xs font-bold px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">${hasSelectedClass ? `${filteredStudents.length} records` : 'Class required'}</span>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" id="btn-students-export-pdf" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold text-white bg-rose-600 hover:bg-rose-700 shadow-xs transition-all cursor-pointer">
+                <i class="fas fa-file-pdf"></i>
+                <span>PDF / Print</span>
+              </button>
+              <button type="button" id="btn-students-export-excel" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs transition-all cursor-pointer">
+                <i class="fas fa-file-excel"></i>
+                <span>Export Excel</span>
+              </button>
+            </div>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
-            <select id="official-student-class" class="p-2.5 rounded-lg border bg-white text-sm font-semibold"><option value="">Select Class</option>${classOptions.map((className) => `<option value="${escapeHtml(className)}" ${officialFilters.studentClass === className ? 'selected' : ''}>${escapeHtml(className)}</option>`).join('')}</select>
-            <select id="official-student-gender" class="p-2.5 rounded-lg border bg-white text-sm font-semibold"><option value="ALL">All Genders</option><option value="Male" ${officialFilters.studentGender === 'Male' ? 'selected' : ''}>Male</option><option value="Female" ${officialFilters.studentGender === 'Female' ? 'selected' : ''}>Female</option></select>
-            <select id="official-student-info" class="p-2.5 rounded-lg border bg-white text-sm font-semibold"><option value="ALL">All Info</option><option value="GROUPED" ${officialFilters.studentInfo === 'GROUPED' ? 'selected' : ''}>Grouped</option><option value="CONCESSION" ${officialFilters.studentInfo === 'CONCESSION' ? 'selected' : ''}>Concession</option><option value="MISSING_MOBILE" ${officialFilters.studentInfo === 'MISSING_MOBILE' ? 'selected' : ''}>Missing Mobile</option><option value="MISSING_UID" ${officialFilters.studentInfo === 'MISSING_UID' ? 'selected' : ''}>Missing UID</option></select>
-            <input id="official-student-search" value="${escapeHtml(officialFilters.studentSearch)}" class="p-2.5 rounded-lg border bg-white text-sm font-semibold lg:col-span-2" placeholder="Search name / adm / phone / any detail">
+
+          <!-- Clearly Visible Filter Input Controls -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5 mb-4 bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80">
+            <div>
+              <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Academic Year</label>
+              <select id="official-student-year" class="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-bold text-slate-800 shadow-2xs focus:border-blue-500">
+                ${yearOptionsHtml}
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Class</label>
+              <select id="official-student-class" class="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-bold text-slate-800 shadow-2xs focus:border-blue-500">
+                <option value="ALL" ${(!officialFilters.studentClass || officialFilters.studentClass === 'ALL') ? 'selected' : ''}>All Classes (${yearStudents.length})</option>
+                ${classOptions.map((className) => `<option value="${escapeHtml(className)}" ${officialFilters.studentClass === className ? 'selected' : ''}>Class ${escapeHtml(className)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Gender</label>
+              <select id="official-student-gender" class="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-bold text-slate-800 shadow-2xs focus:border-blue-500">
+                <option value="ALL">All Genders</option>
+                <option value="Male" ${officialFilters.studentGender === 'Male' ? 'selected' : ''}>Male</option>
+                <option value="Female" ${officialFilters.studentGender === 'Female' ? 'selected' : ''}>Female</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Filter Category</label>
+              <select id="official-student-info" class="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-bold text-slate-800 shadow-2xs focus:border-blue-500">
+                <option value="ALL">All Students</option>
+                <option value="GROUPED" ${officialFilters.studentInfo === 'GROUPED' ? 'selected' : ''}>Grouped Students</option>
+                <option value="CONCESSION" ${officialFilters.studentInfo === 'CONCESSION' ? 'selected' : ''}>Fee Concession</option>
+                <option value="MISSING_MOBILE" ${officialFilters.studentInfo === 'MISSING_MOBILE' ? 'selected' : ''}>Missing Mobile</option>
+                <option value="MISSING_UID" ${officialFilters.studentInfo === 'MISSING_UID' ? 'selected' : ''}>Missing UID</option>
+              </select>
+            </div>
+            <div class="sm:col-span-2">
+              <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Search Student Details</label>
+              <div class="relative">
+                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                <input id="official-student-search" type="text" value="${escapeHtml(officialFilters.studentSearch)}" class="w-full pl-8 pr-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-semibold text-slate-800 shadow-2xs focus:border-blue-500" placeholder="Search by name, adm no, UID, parent, phone, Aadhaar, address...">
+              </div>
+            </div>
           </div>
-          <div class="overflow-auto w-full"><table class="w-full text-xs md:text-sm border-collapse min-w-[1000px]"><thead><tr class="bg-slate-100 text-slate-700"><th class="border p-2 w-10">#</th><th class="border p-2 text-center w-14">Photo</th>${headerCells}<th class="border p-2">Group</th></tr></thead><tbody>${rows || `<tr><td colspan="${columns.length + 3}" class="border p-3 text-center text-slate-500">${emptyStudentMessage}</td></tr>`}</tbody></table></div>
-          <div class="official-mobile-card-list mt-4">${cardRows || `<div class="text-sm text-slate-500">${emptyStudentMessage}</div>`}</div>
+
+          <!-- Top Pagination & Row Limit Bar -->
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-3 px-3 py-2 rounded-xl bg-slate-100/80 border border-slate-200 text-xs">
+            <div class="flex items-center gap-2 font-bold text-slate-700">
+              <span>Show Rows:</span>
+              <select id="official-student-page-size" class="px-2.5 py-1 rounded-lg border border-slate-300 bg-white font-extrabold text-slate-800">
+                <option value="10" ${officialFilters.studentPageSize === 10 ? 'selected' : ''}>10</option>
+                <option value="25" ${officialFilters.studentPageSize === 25 ? 'selected' : ''}>25</option>
+                <option value="50" ${officialFilters.studentPageSize === 50 ? 'selected' : ''}>50</option>
+                <option value="100" ${officialFilters.studentPageSize === 100 ? 'selected' : ''}>100</option>
+                <option value="0" ${officialFilters.studentPageSize === 0 ? 'selected' : ''}>All (${totalCount})</option>
+              </select>
+              <span class="text-slate-500 ml-1">
+                Showing <b class="text-slate-900">${totalCount ? startIdx + 1 : 0}</b>–<b class="text-slate-900">${endIdx}</b> of <b class="text-slate-900">${totalCount}</b>
+              </span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" id="official-stu-prev" ${officialFilters.studentPage <= 1 ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-extrabold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none cursor-pointer">
+                <i class="fas fa-chevron-left mr-1 text-[10px]"></i> Previous
+              </button>
+              <span class="font-extrabold text-slate-700 px-2">Page ${officialFilters.studentPage} of ${totalPages}</span>
+              <button type="button" id="official-stu-next" ${officialFilters.studentPage >= totalPages ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-extrabold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none cursor-pointer">
+                Next <i class="fas fa-chevron-right ml-1 text-[10px]"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Full-Screen Responsive Data Table -->
+          <div class="overflow-x-auto w-full rounded-xl border border-slate-200">
+            <table class="w-full text-xs border-collapse min-w-[1400px]">
+              <thead>
+                <tr class="bg-slate-100 text-slate-700 border-b border-slate-200">
+                  <th class="border border-slate-200 px-2.5 py-2.5 w-12 text-center font-extrabold">NO</th>
+                  <th class="border border-slate-200 px-2 py-2.5 text-center w-14 font-extrabold">Avatar</th>
+                  ${headerCells}
+                  <th class="border border-slate-200 px-2.5 py-2.5 text-left font-extrabold">Group</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows || `<tr><td colspan="${coreAdminColumns.length + extraKeys.length + 3}" class="border border-slate-200 p-6 text-center text-slate-500 font-semibold">${emptyStudentMessage}</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Mobile Cards View -->
+          <div class="official-mobile-card-list mt-4">${cardRows || `<div class="text-sm text-slate-500 text-center py-4">${emptyStudentMessage}</div>`}</div>
+
+          <!-- Bottom Pagination Bar -->
+          <div class="flex flex-wrap items-center justify-between gap-3 mt-3 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+            <div class="font-bold text-slate-600">
+              Showing rows <b class="text-slate-900">${totalCount ? startIdx + 1 : 0}</b> to <b class="text-slate-900">${endIdx}</b> of <b class="text-slate-900">${totalCount}</b> students
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" id="official-stu-prev-bottom" ${officialFilters.studentPage <= 1 ? 'disabled' : ''} class="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white font-extrabold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none cursor-pointer">
+                <i class="fas fa-chevron-left mr-1 text-[10px]"></i> Previous
+              </button>
+              <span class="font-extrabold text-slate-800 px-2">Page ${officialFilters.studentPage} / ${totalPages}</span>
+              <button type="button" id="official-stu-next-bottom" ${officialFilters.studentPage >= totalPages ? 'disabled' : ''} class="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white font-extrabold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none cursor-pointer">
+                Next <i class="fas fa-chevron-right ml-1 text-[10px]"></i>
+              </button>
+            </div>
+          </div>
         </div>`;
-      document.getElementById('official-student-class')?.addEventListener('change', (e) => { officialFilters.studentClass = e.target.value; renderStudents(); });
-      document.getElementById('official-student-gender')?.addEventListener('change', (e) => { officialFilters.studentGender = e.target.value; renderStudents(); });
-      document.getElementById('official-student-info')?.addEventListener('change', (e) => { officialFilters.studentInfo = e.target.value; renderStudents(); });
-      document.getElementById('official-student-search')?.addEventListener('input', (e) => { officialFilters.studentSearch = e.target.value; renderStudents(); });
+
+      document.getElementById('official-student-year')?.addEventListener('change', (e) => {
+        officialFilters.academicYearId = e.target.value;
+        officialFilters.studentPage = 1;
+        buildClassSummary();
+        renderStudents();
+      });
+      document.getElementById('official-student-class')?.addEventListener('change', (e) => {
+        officialFilters.studentClass = e.target.value;
+        officialFilters.studentPage = 1;
+        renderStudents();
+      });
+      document.getElementById('official-student-gender')?.addEventListener('change', (e) => {
+        officialFilters.studentGender = e.target.value;
+        officialFilters.studentPage = 1;
+        renderStudents();
+      });
+      document.getElementById('official-student-info')?.addEventListener('change', (e) => {
+        officialFilters.studentInfo = e.target.value;
+        officialFilters.studentPage = 1;
+        renderStudents();
+      });
+      document.getElementById('official-student-search')?.addEventListener('input', (e) => {
+        const cursorPos = e.target.selectionStart;
+        officialFilters.studentSearch = e.target.value;
+        officialFilters.studentPage = 1;
+        renderStudents();
+        const searchInput = document.getElementById('official-student-search');
+        if (searchInput) {
+          searchInput.focus();
+          try { searchInput.setSelectionRange(cursorPos, cursorPos); } catch (_err) {}
+        }
+      });
+      document.getElementById('official-student-page-size')?.addEventListener('change', (e) => {
+        officialFilters.studentPageSize = Number(e.target.value);
+        officialFilters.studentPage = 1;
+        renderStudents();
+      });
+
+      const goPrevPage = () => {
+        if (officialFilters.studentPage > 1) {
+          officialFilters.studentPage -= 1;
+          renderStudents();
+        }
+      };
+      const goNextPage = () => {
+        if (officialFilters.studentPage < totalPages) {
+          officialFilters.studentPage += 1;
+          renderStudents();
+        }
+      };
+      document.getElementById('official-stu-prev')?.addEventListener('click', goPrevPage);
+      document.getElementById('official-stu-next')?.addEventListener('click', goNextPage);
+      document.getElementById('official-stu-prev-bottom')?.addEventListener('click', goPrevPage);
+      document.getElementById('official-stu-next-bottom')?.addEventListener('click', goNextPage);
+
+      document.getElementById('btn-students-export-excel')?.addEventListener('click', () => exportStudentsToExcel(filteredStudents));
+      document.getElementById('btn-students-export-pdf')?.addEventListener('click', () => printStudentsRegisterPdf(filteredStudents));
+
       document.querySelectorAll('[data-student-id]').forEach((el) => el.addEventListener('click', () => {
-        const student = allStudents.find((item) => item.id === el.dataset.studentId);
+        const student = yearStudents.find((item) => item.id === el.dataset.studentId) || allStudents.find((item) => item.id === el.dataset.studentId);
         if (student) {
           openOfficialDetailModal('Student Profile', buildStudentDetailHtml(student));
           attachStudentModalTabs();
@@ -757,8 +1192,9 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
     };
 
     const buildClassSummary = () => {
+      const yearStudents = getStudentsForCurrentAcademicYear();
       const map = new Map();
-      allStudents.forEach((student) => {
+      yearStudents.forEach((student) => {
         const cls = getStudentClass(student);
         if (!map.has(cls)) map.set(cls, { boys: 0, girls: 0, total: 0, active: 0, inactive: 0, missingMobile: 0, missingUid: 0, grouped: 0, concession: 0 });
         const row = map.get(cls);
@@ -775,21 +1211,105 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       });
       const keys = [...map.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
       const totals = { boys: 0, girls: 0, total: 0, active: 0, inactive: 0, missingMobile: 0, missingUid: 0, grouped: 0, concession: 0 };
-      const rows = keys.map((cls) => {
+      const rows = keys.map((cls, idx) => {
         const row = map.get(cls);
         Object.keys(totals).forEach((key) => { totals[key] += row[key]; });
-        return `<tr class="hover:bg-indigo-50"><td class="border p-2 font-semibold"><button type="button" class="text-blue-700 font-extrabold class-filter-btn" data-class="${escapeHtml(cls)}">${escapeHtml(cls)}</button></td><td class="border p-2 text-center">${row.boys}</td><td class="border p-2 text-center">${row.girls}</td><td class="border p-2 text-center font-bold">${row.total}</td><td class="border p-2 text-center">${row.active}</td><td class="border p-2 text-center">${row.inactive}</td><td class="border p-2 text-center">${row.grouped}</td><td class="border p-2 text-center">${row.concession}</td><td class="border p-2 text-center">${row.missingMobile}</td><td class="border p-2 text-center">${row.missingUid}</td></tr>`;
+        return `<tr class="hover:bg-indigo-50/70 transition-colors odd:bg-white even:bg-slate-50/40">
+          <td class="border border-slate-200 p-2.5 text-center font-bold text-slate-500">${idx + 1}</td>
+          <td class="border border-slate-200 p-2.5 font-semibold">
+            <button type="button" class="text-blue-700 hover:underline font-extrabold class-filter-btn cursor-pointer" data-class="${escapeHtml(cls)}">Class ${escapeHtml(cls)}</button>
+          </td>
+          <td class="border border-slate-200 p-2.5 text-center font-semibold">${row.boys}</td>
+          <td class="border border-slate-200 p-2.5 text-center font-semibold">${row.girls}</td>
+          <td class="border border-slate-200 p-2.5 text-center font-extrabold text-slate-900 bg-slate-50">${row.total}</td>
+          <td class="border border-slate-200 p-2.5 text-center text-emerald-700 font-bold">${row.active}</td>
+          <td class="border border-slate-200 p-2.5 text-center text-rose-600 font-semibold">${row.inactive}</td>
+          <td class="border border-slate-200 p-2.5 text-center">${row.grouped}</td>
+          <td class="border border-slate-200 p-2.5 text-center">${row.concession}</td>
+          <td class="border border-slate-200 p-2.5 text-center">${row.missingMobile}</td>
+          <td class="border border-slate-200 p-2.5 text-center">${row.missingUid}</td>
+        </tr>`;
       }).join('');
       const summaryTarget = document.getElementById('official-tab-summary');
       if (!summaryTarget) return;
 
+      const selectedYearValue = officialFilters.academicYearId || activeAcademicYearId || '';
+      const yearOptionsHtml = academicYears.length
+        ? academicYears.map((y) => `<option value="${escapeHtml(y.id)}" ${selectedYearValue === y.id ? 'selected' : ''}>Academic Year: ${escapeHtml(y.name || y.id)}${y.id === activeAcademicYearId ? ' (Active)' : ''}</option>`).join('')
+        : `<option value="">Current Academic Year</option>`;
+
       summaryTarget.innerHTML = `
-        <div class="card p-4 rounded-2xl shadow-sm">
-          <div class="flex flex-wrap items-center justify-between gap-3 mb-4"><div><h3 class="font-extrabold text-lg">Class-wise Summary</h3><p class="text-xs text-slate-500 font-semibold">Click a class name to open students from that class.</p></div><span class="text-xs font-bold px-3 py-1 rounded-full bg-indigo-50 text-indigo-700">Institution Total: ${totals.total}</span></div>
-          <div class="overflow-x-auto"><table class="w-full text-sm border-collapse min-w-[900px]"><thead><tr class="bg-slate-100"><th class="border p-2 text-left">Class</th><th class="border p-2">Boys</th><th class="border p-2">Girls</th><th class="border p-2">Total</th><th class="border p-2">Active</th><th class="border p-2">Inactive</th><th class="border p-2">Grouped</th><th class="border p-2">Concession</th><th class="border p-2">No Mobile</th><th class="border p-2">No UID</th></tr></thead><tbody>${rows || '<tr><td colspan="10" class="border p-3 text-center text-slate-500">No students available</td></tr>'}<tr class="bg-indigo-50 font-bold"><td class="border p-2">Grand Total</td><td class="border p-2 text-center">${totals.boys}</td><td class="border p-2 text-center">${totals.girls}</td><td class="border p-2 text-center">${totals.total}</td><td class="border p-2 text-center">${totals.active}</td><td class="border p-2 text-center">${totals.inactive}</td><td class="border p-2 text-center">${totals.grouped}</td><td class="border p-2 text-center">${totals.concession}</td><td class="border p-2 text-center">${totals.missingMobile}</td><td class="border p-2 text-center">${totals.missingUid}</td></tr></tbody></table></div>
+        <div class="card p-3 sm:p-5 rounded-2xl shadow-sm w-full max-w-none space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+            <div>
+              <h3 class="font-extrabold text-lg text-slate-900 flex items-center gap-2">
+                <i class="fas fa-chart-pie text-emerald-600"></i>
+                <span>Dashboard — Class Summary</span>
+              </h3>
+              <p class="text-xs text-slate-500 font-semibold mt-0.5">Overview of classes, student strength, and records. Click any class to inspect its student register.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2.5">
+              <select id="summary-academic-year" class="p-2 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-bold text-slate-800 shadow-2xs">
+                ${yearOptionsHtml}
+              </select>
+              <span class="text-xs font-extrabold px-3 py-2 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200">Total Students: ${totals.total}</span>
+            </div>
+          </div>
+
+          <div class="official-metric-grid">
+            ${metricCard('Total Students', totals.total, 'blue', 'fa-user-graduate')}
+            ${metricCard('Total Classes', keys.length, 'indigo', 'fa-chalkboard')}
+            ${metricCard('Boys / Girls', `${totals.boys} / ${totals.girls}`, 'teal', 'fa-children')}
+            ${metricCard('Active Students', totals.active, 'green', 'fa-user-check')}
+            ${metricCard('Fee Concession', totals.concession, 'amber', 'fa-tags')}
+            ${metricCard('Active Staff', allStaff.filter((s) => s.isActive !== false).length, 'purple', 'fa-users')}
+          </div>
+
+          <div class="overflow-x-auto w-full rounded-xl border border-slate-200">
+            <table class="w-full text-xs sm:text-sm border-collapse min-w-[950px]">
+              <thead>
+                <tr class="bg-slate-100 text-slate-700">
+                  <th class="border border-slate-200 p-2.5 w-12 text-center">NO</th>
+                  <th class="border border-slate-200 p-2.5 text-left">Class</th>
+                  <th class="border border-slate-200 p-2.5 text-center">Boys</th>
+                  <th class="border border-slate-200 p-2.5 text-center">Girls</th>
+                  <th class="border border-slate-200 p-2.5 text-center">Total</th>
+                  <th class="border border-slate-200 p-2.5 text-center">Active</th>
+                  <th class="border border-slate-200 p-2.5 text-center">Inactive</th>
+                  <th class="border border-slate-200 p-2.5 text-center">Grouped</th>
+                  <th class="border border-slate-200 p-2.5 text-center">Concession</th>
+                  <th class="border border-slate-200 p-2.5 text-center">No Mobile</th>
+                  <th class="border border-slate-200 p-2.5 text-center">No UID</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows || '<tr><td colspan="11" class="border border-slate-200 p-4 text-center text-slate-500">No students available for this academic year</td></tr>'}
+                <tr class="bg-indigo-50 font-extrabold text-slate-900">
+                  <td class="border border-slate-200 p-2.5 text-center">-</td>
+                  <td class="border border-slate-200 p-2.5">Grand Total</td>
+                  <td class="border border-slate-200 p-2.5 text-center">${totals.boys}</td>
+                  <td class="border border-slate-200 p-2.5 text-center">${totals.girls}</td>
+                  <td class="border border-slate-200 p-2.5 text-center">${totals.total}</td>
+                  <td class="border border-slate-200 p-2.5 text-center">${totals.active}</td>
+                  <td class="border border-slate-200 p-2.5 text-center">${totals.inactive}</td>
+                  <td class="border border-slate-200 p-2.5 text-center">${totals.grouped}</td>
+                  <td class="border border-slate-200 p-2.5 text-center">${totals.concession}</td>
+                  <td class="border border-slate-200 p-2.5 text-center">${totals.missingMobile}</td>
+                  <td class="border border-slate-200 p-2.5 text-center">${totals.missingUid}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>`;
+      document.getElementById('summary-academic-year')?.addEventListener('change', (e) => {
+        officialFilters.academicYearId = e.target.value;
+        officialFilters.studentPage = 1;
+        buildClassSummary();
+        renderStudents();
+      });
       document.querySelectorAll('.class-filter-btn').forEach((btn) => btn.addEventListener('click', () => {
-        officialFilters.studentClass = btn.dataset.class || '';
+        officialFilters.studentClass = btn.dataset.class || 'ALL';
+        officialFilters.studentPage = 1;
         renderStudents();
         setTab('students');
       }));
@@ -906,6 +1426,107 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
         </div>`;
     };
 
+    const exportStaffToExcel = (staffList = []) => {
+      if (typeof XLSX === 'undefined') {
+        openOfficialDetailModal('Export Notice', '<p class="text-sm text-slate-600 p-4">Excel library is still loading. Please try again in a moment.</p>');
+        return;
+      }
+      const rowsData = staffList.map((s, idx) => {
+        const customVals = (s.customValues && typeof s.customValues === 'object') ? s.customValues : {};
+        return {
+          'No': idx + 1,
+          'Full Name': s.name || customVals.name || '',
+          'Role / Designation': s.role || s.designation || customVals.role || s.type || '',
+          'Category': s.type || '',
+          'MSR / Staff ID': s.msr || customVals.msr || '',
+          'Phone Number': s.phone || s.mobile || customVals.phone || '',
+          'Email': s.email || customVals.email || '',
+          'Qualification': s.qualification || customVals.qualification || '',
+          'Subject / Dept': s.subject || customVals.subject || '',
+          'Joining Date': s.joiningDate || customVals.joiningDate || '',
+          'Duty Classes': Array.isArray(s.dutyClasses) && s.dutyClasses.length ? s.dutyClasses.join(', ') : 'All',
+          'Status': s.isActive !== false ? 'Active' : 'Inactive',
+          'Address': s.address || customVals.address || ''
+        };
+      });
+      const ws = XLSX.utils.json_to_sheet(rowsData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Staff Directory');
+      XLSX.writeFile(wb, `Staff_Directory_${formatDate(new Date())}.xlsx`);
+    };
+
+    const printStaffDirectoryPdf = (staffList = []) => {
+      const instName = resolveInstitutionName(institutionConfig) || 'Institution Official Portal';
+      let printContainer = document.getElementById('staff-register-print-area');
+      if (!printContainer) {
+        printContainer = document.createElement('div');
+        printContainer.id = 'staff-register-print-area';
+        printContainer.className = 'hidden';
+        document.body.appendChild(printContainer);
+      }
+
+      printContainer.innerHTML = `
+        <div class="p-4 bg-white text-slate-900">
+          <div class="text-center border-b-2 border-slate-800 pb-3 mb-4">
+            <h1 class="text-xl font-black uppercase">${escapeHtml(instName)}</h1>
+            <p class="text-xs font-bold text-slate-600 mt-0.5">Staff Directory Register (${staffList.length} Members)</p>
+          </div>
+          <table class="w-full text-[10px] border-collapse border border-slate-400">
+            <thead>
+              <tr class="bg-slate-100">
+                <th class="border border-slate-400 p-1">No</th>
+                <th class="border border-slate-400 p-1 text-left">Full Name</th>
+                <th class="border border-slate-400 p-1 text-left">Designation / Role</th>
+                <th class="border border-slate-400 p-1">Category</th>
+                <th class="border border-slate-400 p-1">MSR / ID</th>
+                <th class="border border-slate-400 p-1">Phone</th>
+                <th class="border border-slate-400 p-1">Qualification</th>
+                <th class="border border-slate-400 p-1">Duty Classes</th>
+                <th class="border border-slate-400 p-1">Status</th>
+                <th class="border border-slate-400 p-1 text-left">Address</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${staffList.map((s, idx) => {
+                const customVals = (s.customValues && typeof s.customValues === 'object') ? s.customValues : {};
+                const duty = Array.isArray(s.dutyClasses) && s.dutyClasses.length ? s.dutyClasses.join(', ') : 'All';
+                return `
+                  <tr>
+                    <td class="border border-slate-400 p-1 text-center font-bold">${idx + 1}</td>
+                    <td class="border border-slate-400 p-1 font-bold">${escapeHtml(s.name || customVals.name || '--')}</td>
+                    <td class="border border-slate-400 p-1">${escapeHtml(s.role || s.designation || customVals.role || s.type || '--')}</td>
+                    <td class="border border-slate-400 p-1 text-center">${escapeHtml(s.type || '--')}</td>
+                    <td class="border border-slate-400 p-1 text-center">${escapeHtml(s.msr || customVals.msr || '--')}</td>
+                    <td class="border border-slate-400 p-1 text-center">${escapeHtml(s.phone || s.mobile || customVals.phone || '--')}</td>
+                    <td class="border border-slate-400 p-1 text-center">${escapeHtml(s.qualification || customVals.qualification || '--')}</td>
+                    <td class="border border-slate-400 p-1 text-center">${escapeHtml(duty)}</td>
+                    <td class="border border-slate-400 p-1 text-center">${s.isActive !== false ? 'Active' : 'Inactive'}</td>
+                    <td class="border border-slate-400 p-1">${escapeHtml(s.address || customVals.address || '--')}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      const styleEl = document.createElement('style');
+      styleEl.id = 'staff-register-print-style';
+      styleEl.textContent = `
+        @media print {
+          body.printing-staff-register > *:not(#staff-register-print-area) { display: none !important; }
+          body.printing-staff-register #staff-register-print-area { display: block !important; position: static !important; width: 100% !important; }
+        }
+      `;
+      document.head.appendChild(styleEl);
+      document.body.classList.add('printing-staff-register');
+      window.print();
+      setTimeout(() => {
+        document.body.classList.remove('printing-staff-register');
+        styleEl.remove();
+      }, 600);
+    };
+
     const renderStaffTab = () => {
       const filteredStaff = allStaff.filter((staff) => {
         const type = String(staff.type || '--');
@@ -919,53 +1540,55 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
 
       const staffTypes = [...new Set(allStaff.map((staff) => String(staff.type || '--')))].sort((a, b) => a.localeCompare(b));
 
-      const staffCardsHtml = filteredStaff.map((staff) => {
-        const photoUrl = getPhoto(staff);
+      const staffTableRowsHtml = filteredStaff.map((staff, idx) => {
         const isActive = staff.isActive !== false;
+        const customVals = (staff.customValues && typeof staff.customValues === 'object') ? staff.customValues : {};
         const dutyClasses = Array.isArray(staff.dutyClasses) && staff.dutyClasses.length ? staff.dutyClasses.join(', ') : 'All';
+        const roleLabel = staff.role || staff.designation || customVals.role || staff.type || 'Staff';
+        const msrVal = staff.msr || customVals.msr || '--';
+        const phoneVal = staff.phone || staff.mobile || customVals.phone || '--';
+        const qualVal = staff.qualification || customVals.qualification || '--';
+        const joinVal = staff.joiningDate || customVals.joiningDate || '--';
+        const addrVal = staff.address || customVals.address || '--';
+
         return `
-          <div class="staff-compact-card cursor-pointer group" data-staff-id="${escapeHtml(staff.id)}">
-            <div>
-              <div class="flex items-start justify-between gap-2 mb-3">
-                  ${(staff.photo || staff.image) ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(staff.name || 'Staff')}" class="w-11 h-11 rounded-xl object-cover border border-slate-200 bg-slate-50 flex-shrink-0 shadow-2xs group-hover:border-blue-400 transition-colors" onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.classList.remove('hidden');"><div class="hidden w-11 h-11 rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-300 flex-shrink-0"><i class="fas fa-user text-sm"></i></div>` : `<div class="w-11 h-11 rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-300 flex-shrink-0"><i class="fas fa-user text-sm"></i></div>`}
-                  <div class="min-w-0">
-                    <h4 class="font-extrabold text-slate-900 text-sm leading-tight truncate group-hover:text-blue-600 transition-colors">${escapeHtml(staff.name || '--')}</h4>
-                    <span class="text-[11px] font-semibold text-slate-500">${escapeHtml(staff.role || staff.type || 'Staff')}</span>
-                  </div>
-                </div>
-                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500 border border-slate-200'} whitespace-nowrap">
-                  ${isActive ? 'Active' : 'Inactive'}
-                </span>
-              </div>
-
-              <div class="space-y-1.5 my-3 text-xs bg-slate-50/70 p-2.5 rounded-xl border border-slate-100">
-                <div class="flex items-center justify-between">
-                  <span class="text-slate-400 font-semibold text-[11px]">Phone:</span>
-                  <span class="font-bold text-slate-800 font-mono">${escapeHtml(staff.phone || '--')}</span>
-                </div>
-                <div class="flex items-center justify-between">
-                  <span class="text-slate-400 font-semibold text-[11px]">Duty:</span>
-                  <span class="font-bold text-indigo-700 truncate max-w-[150px]">${escapeHtml(dutyClasses)}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+          <tr class="hover:bg-indigo-50/70 cursor-pointer transition-colors odd:bg-white even:bg-slate-50/40" data-staff-id="${escapeHtml(staff.id)}">
+            <td class="border border-slate-200 px-2.5 py-2 text-center font-extrabold text-slate-600">${idx + 1}</td>
+            <td class="border border-slate-200 px-2 py-1.5 text-center align-middle">
+              ${renderAvatarMarkup(staff, staff.name, 'w-9 h-9 rounded-xl text-xs')}
+            </td>
+            <td class="border border-slate-200 px-3 py-2 align-middle font-extrabold text-slate-900 whitespace-nowrap">${escapeHtml(staff.name || '--')}</td>
+            <td class="border border-slate-200 px-2.5 py-2 align-middle font-semibold text-slate-700 whitespace-nowrap">${escapeHtml(roleLabel)}</td>
+            <td class="border border-slate-200 px-2.5 py-2 align-middle text-center whitespace-nowrap">
+              <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold text-xs">${escapeHtml(staff.type || '--')}</span>
+            </td>
+            <td class="border border-slate-200 px-2.5 py-2 align-middle text-center font-mono text-slate-700 whitespace-nowrap">${escapeHtml(msrVal)}</td>
+            <td class="border border-slate-200 px-2.5 py-2 align-middle font-mono font-bold text-slate-800 whitespace-nowrap">${escapeHtml(phoneVal)}</td>
+            <td class="border border-slate-200 px-2.5 py-2 align-middle text-slate-700 whitespace-nowrap">${escapeHtml(qualVal)}</td>
+            <td class="border border-slate-200 px-2.5 py-2 align-middle text-indigo-700 font-bold whitespace-nowrap">${escapeHtml(dutyClasses)}</td>
+            <td class="border border-slate-200 px-2.5 py-2 align-middle text-slate-600 whitespace-nowrap">${escapeHtml(joinVal)}</td>
+            <td class="border border-slate-200 px-2.5 py-2 align-middle max-w-[200px] truncate text-slate-600" title="${escapeHtml(addrVal)}">${escapeHtml(addrVal)}</td>
+            <td class="border border-slate-200 px-2.5 py-2 align-middle whitespace-nowrap">
               <div class="flex items-center gap-1">
-                ${staff.canCollect !== false ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60" title="Fee Collection Active">Fee</span>` : ''}
-                ${staff.canManageResults === true ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200/60" title="Result Entry Active">Result</span>` : ''}
-                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200/60" title="Worksheet Active">Sheet</span>
+                ${staff.canCollect !== false ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Fee</span>` : ''}
+                ${staff.canManageResults === true ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">Result</span>` : ''}
+                ${staff.canAccessWorksheet !== false ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">Sheet</span>` : ''}
               </div>
-              <button type="button" class="text-xs font-bold text-blue-600 group-hover:text-blue-800 flex items-center gap-1">
-                <span>View</span>
-                <i class="fas fa-chevron-right text-[10px]"></i>
-              </button>
-            </div>
-          </div>`;
+            </td>
+            <td class="border border-slate-200 px-2.5 py-2 align-middle text-center whitespace-nowrap">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}">
+                ${isActive ? 'Active' : 'Inactive'}
+              </span>
+            </td>
+          </tr>`;
       }).join('');
 
       const catBlocks = directoryCategories.map((cat) => {
         const entries = directoryEntries.filter((entry) => entry.categoryId === cat.id).sort((a, b) => Number(a.displayOrder || 999) - Number(b.displayOrder || 999));
+        const authItem = getCategoryAuthItem(cat.id);
+        const hiddenKeys = new Set([authItem.usernameField, authItem.passwordField, 'photo', 'image', 'logo'].filter(Boolean));
+        const visibleFields = normalizeConfiguredFields(cat?.fields || []).filter((f) => f.key && !hiddenKeys.has(f.key) && f.type !== 'photo' && f.type !== 'password');
+
         return `
           <div class="border border-slate-200 rounded-2xl p-4 bg-white shadow-xs">
             <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
@@ -974,20 +1597,29 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
                 <span class="text-xs text-slate-500 font-semibold">${entries.length} registered members</span>
               </div>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              ${entries.map((entry) => {
-                const photoUrl = getPhoto(entry.values || entry);
-                return `
-                  <div class="staff-compact-card cursor-pointer group" data-dir-id="${escapeHtml(entry.id)}">
-                    <div class="flex items-center gap-3">
-                      <img src="${escapeHtml(photoUrl)}" alt="Member" class="w-10 h-10 rounded-xl object-cover border border-slate-200 bg-slate-50 flex-shrink-0" onerror="this.onerror=null;this.src='assets/images/logo.png'">
-                      <div class="min-w-0 flex-1">
-                        <h5 class="font-bold text-slate-900 text-xs truncate group-hover:text-blue-600 transition-colors">${escapeHtml(entry.values?.name || entry.values?.title || 'Member')}</h5>
-                        <p class="text-[11px] text-slate-500 truncate">${escapeHtml(entry.values?.phone || entry.values?.mobile || cat.name || '--')}</p>
-                      </div>
-                    </div>
-                  </div>`;
-              }).join('') || '<div class="text-xs text-slate-400 p-2">No entries in this category</div>'}
+            <div class="overflow-x-auto w-full rounded-xl border border-slate-200">
+              <table class="w-full text-xs border-collapse min-w-[700px]">
+                <thead>
+                  <tr class="bg-slate-100 text-slate-700">
+                    <th class="border border-slate-200 px-2.5 py-2 w-12 text-center font-extrabold">NO</th>
+                    <th class="border border-slate-200 px-2 py-2 w-14 text-center font-extrabold">Avatar</th>
+                    ${visibleFields.map((f) => `<th class="border border-slate-200 px-2.5 py-2 text-left font-extrabold whitespace-nowrap">${escapeHtml(f.label)}</th>`).join('')}
+                  </tr>
+                </thead>
+                <tbody>
+                  ${entries.map((entry, idx) => {
+                    const memberName = entry.values?.name || entry.values?.title || 'Member';
+                    return `
+                      <tr class="hover:bg-blue-50/70 cursor-pointer transition-colors odd:bg-white even:bg-slate-50/40" data-dir-id="${escapeHtml(entry.id)}">
+                        <td class="border border-slate-200 px-2.5 py-2 text-center font-bold text-slate-600">${idx + 1}</td>
+                        <td class="border border-slate-200 px-2 py-1.5 text-center align-middle">
+                          ${renderAvatarMarkup(entry.values || entry, memberName, 'w-9 h-9 rounded-xl text-xs')}
+                        </td>
+                        ${visibleFields.map((f) => `<td class="border border-slate-200 px-2.5 py-2 align-middle font-semibold text-slate-800">${escapeHtml(valueToDisplay(entry.values?.[f.key]) || '--')}</td>`).join('')}
+                      </tr>`;
+                  }).join('') || `<tr><td colspan="${visibleFields.length + 2}" class="border border-slate-200 p-4 text-center text-slate-400">No entries in this category</td></tr>`}
+                </tbody>
+              </table>
             </div>
           </div>`;
       }).join('');
@@ -996,55 +1628,112 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       if (!staffTarget) return;
 
       staffTarget.innerHTML = `
-        <div class="card p-3 sm:p-5 rounded-2xl shadow-sm">
-          <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div class="card p-3 sm:p-5 rounded-2xl shadow-sm w-full max-w-none">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
             <div>
-              <h3 class="font-extrabold text-lg text-slate-900">Staff & Directory</h3>
-              <p class="text-xs text-slate-500 font-semibold">Institutional educators, administration, management and category registers. Click any card for full details.</p>
+              <h3 class="font-extrabold text-lg text-slate-900 flex items-center gap-2">
+                <i class="fas fa-users text-indigo-600"></i>
+                <span>Staff & Directory Register</span>
+                <span class="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">${filteredStaff.length} Staff</span>
+              </h3>
+              <p class="text-xs text-slate-500 font-semibold mt-0.5">Structured tabular register of staff and institutional directory members. Click any row for full profile details.</p>
             </div>
-            <span class="text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">${filteredStaff.length} Staff Members</span>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" id="btn-staff-export-pdf" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold text-white bg-rose-600 hover:bg-rose-700 shadow-xs transition-all cursor-pointer">
+                <i class="fas fa-file-pdf"></i>
+                <span>PDF / Print</span>
+              </button>
+              <button type="button" id="btn-staff-export-excel" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs transition-all cursor-pointer">
+                <i class="fas fa-file-excel"></i>
+                <span>Export Excel</span>
+              </button>
+            </div>
           </div>
 
-          <div class="grid sm:grid-cols-3 gap-3 mb-5">
-            <select id="official-staff-type" class="p-2.5 rounded-xl border bg-white text-sm font-semibold">
-              <option value="ALL">All Staff Types</option>
-              ${staffTypes.map((type) => `<option value="${escapeHtml(type)}" ${officialFilters.staffType === type ? 'selected' : ''}>${escapeHtml(type)}</option>`).join('')}
-            </select>
-            <select id="official-staff-status" class="p-2.5 rounded-xl border bg-white text-sm font-semibold">
-              <option value="ALL">All Status</option>
-              <option value="active" ${officialFilters.staffStatus === 'active' ? 'selected' : ''}>Active Only</option>
-              <option value="inactive" ${officialFilters.staffStatus === 'inactive' ? 'selected' : ''}>Inactive Only</option>
-            </select>
-            <input id="official-staff-search" value="${escapeHtml(officialFilters.staffSearch)}" class="p-2.5 rounded-xl border bg-white text-sm font-semibold" placeholder="Search name, role, phone, MSR...">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80">
+            <div>
+              <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Staff Category</label>
+              <select id="official-staff-type" class="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-bold text-slate-800 shadow-2xs">
+                <option value="ALL">All Staff Types</option>
+                ${staffTypes.map((type) => `<option value="${escapeHtml(type)}" ${officialFilters.staffType === type ? 'selected' : ''}>${escapeHtml(type)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Account Status</label>
+              <select id="official-staff-status" class="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-bold text-slate-800 shadow-2xs">
+                <option value="ALL">All Status</option>
+                <option value="active" ${officialFilters.staffStatus === 'active' ? 'selected' : ''}>Active Only</option>
+                <option value="inactive" ${officialFilters.staffStatus === 'inactive' ? 'selected' : ''}>Inactive Only</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Search Staff</label>
+              <div class="relative">
+                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                <input id="official-staff-search" type="text" value="${escapeHtml(officialFilters.staffSearch)}" class="w-full pl-8 pr-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-semibold text-slate-800 shadow-2xs" placeholder="Search name, role, phone, MSR...">
+              </div>
+            </div>
           </div>
 
-          <!-- Staff Cards Grid -->
+          <!-- Staff Register Table -->
           <div class="mb-6">
-            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 px-1">Staff Register (${filteredStaff.length})</h4>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              ${staffCardsHtml || '<div class="text-sm text-slate-400 p-4 col-span-full text-center">No staff records match the current filters.</div>'}
+            <div class="overflow-x-auto w-full rounded-xl border border-slate-200">
+              <table class="w-full text-xs border-collapse min-w-[1150px]">
+                <thead>
+                  <tr class="bg-slate-100 text-slate-700 border-b border-slate-200">
+                    <th class="border border-slate-200 px-2.5 py-2.5 w-12 text-center font-extrabold">NO</th>
+                    <th class="border border-slate-200 px-2 py-2.5 w-14 text-center font-extrabold">Avatar</th>
+                    <th class="border border-slate-200 px-3 py-2.5 text-left font-extrabold">Staff Name</th>
+                    <th class="border border-slate-200 px-2.5 py-2.5 text-left font-extrabold">Designation / Role</th>
+                    <th class="border border-slate-200 px-2.5 py-2.5 text-center font-extrabold">Category</th>
+                    <th class="border border-slate-200 px-2.5 py-2.5 text-center font-extrabold">MSR / ID</th>
+                    <th class="border border-slate-200 px-2.5 py-2.5 text-left font-extrabold">Phone</th>
+                    <th class="border border-slate-200 px-2.5 py-2.5 text-left font-extrabold">Qualification</th>
+                    <th class="border border-slate-200 px-2.5 py-2.5 text-left font-extrabold">Duty Classes</th>
+                    <th class="border border-slate-200 px-2.5 py-2.5 text-left font-extrabold">Joining Date</th>
+                    <th class="border border-slate-200 px-2.5 py-2.5 text-left font-extrabold">Address</th>
+                    <th class="border border-slate-200 px-2.5 py-2.5 text-left font-extrabold">Access</th>
+                    <th class="border border-slate-200 px-2.5 py-2.5 text-center font-extrabold">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${staffTableRowsHtml || '<tr><td colspan="13" class="border border-slate-200 p-6 text-center text-slate-400 font-semibold">No staff records match the current filters.</td></tr>'}
+                </tbody>
+              </table>
             </div>
           </div>
 
           <!-- Directory Categories -->
           ${catBlocks ? `
             <div class="space-y-4 pt-4 border-t border-slate-100">
-              <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">Other Directory Categories</h4>
+              <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-500 px-1">Other Directory Categories</h4>
               ${catBlocks}
             </div>` : ''}
         </div>`;
 
       document.getElementById('official-staff-type')?.addEventListener('change', (e) => { officialFilters.staffType = e.target.value; renderStaffTab(); });
       document.getElementById('official-staff-status')?.addEventListener('change', (e) => { officialFilters.staffStatus = e.target.value; renderStaffTab(); });
-      document.getElementById('official-staff-search')?.addEventListener('input', (e) => { officialFilters.staffSearch = e.target.value; renderStaffTab(); });
+      document.getElementById('official-staff-search')?.addEventListener('input', (e) => {
+        const cursorPos = e.target.selectionStart;
+        officialFilters.staffSearch = e.target.value;
+        renderStaffTab();
+        const searchInput = document.getElementById('official-staff-search');
+        if (searchInput) {
+          searchInput.focus();
+          try { searchInput.setSelectionRange(cursorPos, cursorPos); } catch (_err) {}
+        }
+      });
 
-      document.querySelectorAll('[data-staff-id]').forEach((card) => card.addEventListener('click', () => {
-        const staff = allStaff.find((item) => item.id === card.dataset.staffId);
+      document.getElementById('btn-staff-export-excel')?.addEventListener('click', () => exportStaffToExcel(filteredStaff));
+      document.getElementById('btn-staff-export-pdf')?.addEventListener('click', () => printStaffDirectoryPdf(filteredStaff));
+
+      document.querySelectorAll('[data-staff-id]').forEach((row) => row.addEventListener('click', () => {
+        const staff = allStaff.find((item) => item.id === row.dataset.staffId);
         if (staff) openOfficialDetailModal('Staff Profile', buildStaffDetailHtml(staff));
       }));
 
-      document.querySelectorAll('[data-dir-id]').forEach((card) => card.addEventListener('click', () => {
-        const entry = directoryEntries.find((item) => item.id === card.dataset.dirId);
+      document.querySelectorAll('[data-dir-id]').forEach((row) => row.addEventListener('click', () => {
+        const entry = directoryEntries.find((item) => item.id === row.dataset.dirId);
         if (entry) openOfficialDetailModal('Category Member Profile', buildDirectoryDetailHtml(entry));
       }));
     };
@@ -1308,11 +1997,18 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       { id: 'SNO', label: 'Serial No. (Auto)' },
       { id: 'name', label: 'Student Name' },
       { id: 'adm', label: 'Admission No.' },
+      { id: 'uid', label: 'UID / Roll No.' },
       { id: 'class', label: 'Class' },
       { id: 'gender', label: 'Gender' },
-      { id: 'mobile', label: 'Mobile No.' },
+      { id: 'dob', label: 'Date of Birth' },
+      { id: 'adm_date', label: 'Admission Date' },
       { id: 'father', label: 'Father Name' },
-      { id: 'uid', label: 'UID / Roll No.' },
+      { id: 'mobile', label: 'Father Mobile' },
+      { id: 'mother', label: 'Mother Name' },
+      { id: 'motherMobile', label: 'Mother Mobile' },
+      { id: 'adhaar', label: 'Aadhaar No.' },
+      { id: 'status', label: 'Status' },
+      { id: 'concessionFee', label: 'Concession Fee' },
       { id: 'address', label: 'Address' },
       { id: 'CUSTOM', label: 'Custom/Blank Space' }
     ];
@@ -2027,18 +2723,17 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
 
     const renderAll = () => {
       renderDashboard();
-      renderStudents();
       buildClassSummary();
+      renderStudents();
       renderStaffTab();
       if(document.getElementById('official-tab-export')?.classList.contains('flex')) {
           renderExportTab();
           setupExcelEngine();
       }
-      renderHome();
     };
 
     const loadData = async () => {
-      const [studentsSnap, staffSnap, groupsSnap, dirSnap, contentSnap, configSnap, authConfigSnap, pageAccessSnap] = await Promise.all([
+      const [studentsSnap, staffSnap, groupsSnap, dirSnap, contentSnap, configSnap, authConfigSnap, pageAccessSnap, academicYearsSnap] = await Promise.all([
         getDocs(collection(db, `${BASE_PATH}/students`)),
         getDocs(collection(db, `${BASE_PATH}/staff`)),
         getDocs(collection(db, `${BASE_PATH}/studentGroups`)),
@@ -2046,7 +2741,8 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
         getDoc(doc(db, `${BASE_PATH}/settings`, 'content')),
         getDoc(doc(db, `${BASE_PATH}/settings`, 'config')),
         getDoc(doc(db, `${BASE_PATH}/settings`, 'categoryAuthConfig')),
-        getDoc(doc(db, `${BASE_PATH}/settings`, 'pageAccess'))
+        getDoc(doc(db, `${BASE_PATH}/settings`, 'pageAccess')),
+        getDoc(doc(db, `${BASE_PATH}/settings`, 'academicYears'))
       ]);
       allStudents = studentsSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
       allStaff = staffSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
@@ -2056,6 +2752,13 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       directoryCategories = Array.isArray(content.directoryCategories) ? content.directoryCategories : [];
       categoryAuthConfig = authConfigSnap.exists() ? { categories: {}, ...(authConfigSnap.data() || {}) } : { categories: {} };
       pageAccessConfig = pageAccessSnap.exists() ? { categories: {}, overrides: {}, ...(pageAccessSnap.data() || {}) } : { categories: {}, overrides: {} };
+      const yearsData = academicYearsSnap.exists() ? (academicYearsSnap.data() || {}) : {};
+      academicYears = Array.isArray(yearsData.years) ? yearsData.years : [];
+      const activeYearObj = academicYears.find((y) => y.isActive) || academicYears[0];
+      activeAcademicYearId = activeYearObj ? activeYearObj.id : '';
+      if (!officialFilters.academicYearId && activeAcademicYearId) {
+        officialFilters.academicYearId = activeAcademicYearId;
+      }
       const conf = configSnap.exists() ? configSnap.data() : {};
       applyOfficialBranding(conf);
     };
@@ -2108,8 +2811,8 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       renderAll();
       if (isWorksheetPage) {
         const rawHash = (window.location.hash || '').replace('#', '');
-        const validTabs = ['students', 'summary', 'staff', 'export', 'home'];
-        setTab(validTabs.includes(rawHash) ? rawHash : 'students');
+        const validTabs = ['summary', 'students', 'staff', 'export'];
+        setTab(validTabs.includes(rawHash) ? rawHash : 'summary');
       } else {
         setTab('dashboard');
         const profileBtn = document.getElementById('official-my-profile-btn');

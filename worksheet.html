@@ -57,8 +57,8 @@
     input, select, textarea { background-color: #ffffff; border-color: #d1d5db; color: #1f2937; transition: border 0.2s; outline: none; }
     input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }
 
-    header { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); position: sticky; top: 15px; z-index: 1000; border: 1px solid #f1f5f9; height: var(--header-height); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04); border-radius: 16px; margin: 15px auto; width: calc(100% - 30px); max-width: 1200px; }
-    @media (max-width: 768px) { header { margin: 10px; width: calc(100% - 20px); border-radius: 12px; top: 10px; } }
+    header { background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(10px); position: sticky; top: 10px; z-index: 1000; border: 1px solid #e2e8f0; height: var(--header-height); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04); border-radius: 16px; margin: 10px auto; width: calc(100% - 24px); max-width: 100%; }
+    @media (max-width: 768px) { header { margin: 8px; width: calc(100% - 16px); border-radius: 12px; top: 8px; } }
     .nav-container { height: 100%; padding: 0 15px; display: flex; justify-content: space-between; align-items: center; position: relative; }
     .header-branding-box { display: flex; align-items: center; gap: 10px; z-index: 10; }
     .header-logo-box { width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
@@ -379,11 +379,10 @@
             <div id="staff-name-display" class="text-blue-900 font-extrabold truncate text-sm">--</div>
             <div id="staff-role-display" class="text-[11px] text-blue-600 font-semibold truncate">Official Portal</div>
           </div>
-          <li><a href="#students" class="nav-link tab-link active" data-tab="students"><i class="fas fa-user-graduate text-lg w-6 text-blue-600"></i> <span>Students</span></a></li>
-          <li><a href="#summary" class="nav-link tab-link" data-tab="summary"><i class="fas fa-table text-lg w-6 text-emerald-600"></i> <span>Class Summary</span></a></li>
+          <li><a href="#summary" class="nav-link tab-link active" data-tab="summary"><i class="fas fa-chart-pie text-lg w-6 text-emerald-600"></i> <span>Dashboard (Class Summary)</span></a></li>
+          <li><a href="#students" class="nav-link tab-link" data-tab="students"><i class="fas fa-user-graduate text-lg w-6 text-blue-600"></i> <span>Students Register</span></a></li>
           <li><a href="#staff" class="nav-link tab-link" data-tab="staff"><i class="fas fa-users text-lg w-6 text-indigo-600"></i> <span>Staff Directory</span></a></li>
           <li><a href="#export" class="nav-link tab-link font-bold text-teal-700" data-tab="export"><i class="fas fa-file-excel text-lg w-6 text-teal-600"></i> <span>Class Worksheet</span></a></li>
-          <li><a href="#home" class="nav-link tab-link" data-tab="home"><i class="fas fa-user-circle text-lg w-6 text-purple-600"></i> <span>My Profile</span></a></li>
           <div class="border-t border-slate-200 my-1"></div>
           <li><a href="official.html" class="nav-link font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200"><i class="fas fa-th-large text-lg w-6 text-blue-600"></i> <span>Official Hub</span></a></li>
           <li><button id="official-logout-btn" class="login-btn-nav btn-danger !w-full"><i class="fas fa-sign-out-alt"></i> <span>Logout</span></button></li>
@@ -391,16 +390,15 @@
       </div>
     </header>
 
-    <main id="app" class="flex-grow flex flex-col overflow-hidden relative">
-      <div id="page-content" class="h-full overflow-y-auto">
-        <section id="official-tab-students" class="official-tab page-content p-4"></section>
-        <section id="official-tab-summary" class="official-tab page-content hidden p-4"></section>
-        <section id="official-tab-staff" class="official-tab page-content hidden p-4"></section>
-        <section id="official-tab-home" class="official-tab page-content hidden p-4"></section>
+    <main id="app" class="flex-grow flex flex-col overflow-hidden relative w-full max-w-none">
+      <div id="page-content" class="h-full w-full max-w-none overflow-y-auto">
+        <section id="official-tab-summary" class="official-tab page-content w-full max-w-none p-2 sm:p-4"></section>
+        <section id="official-tab-students" class="official-tab page-content hidden w-full max-w-none p-2 sm:p-4"></section>
+        <section id="official-tab-staff" class="official-tab page-content hidden w-full max-w-none p-2 sm:p-4"></section>
       </div>
       
       <!-- Excel Interface Container -->
-      <section id="official-tab-export" class="official-tab hidden h-full flex-col bg-[#f3f2f1]"></section>
+      <section id="official-tab-export" class="official-tab hidden h-full w-full max-w-none flex-col bg-[#f3f2f1]"></section>
     </main>
 
     <div id="official-detail-modal" class="fixed inset-0 z-[1000] hidden items-center justify-center bg-slate-950/60 p-3 no-print" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="official-detail-title">

@@ -436,41 +436,43 @@
     </div>
 
     <!-- Student Camera Modal -->
-    <div id="student-camera-modal" class="fixed inset-0 bg-black/95 hidden items-center justify-center z-[10001] p-4">
-        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden p-5 space-y-4">
-            <div class="flex justify-between items-center border-b pb-2">
-                <h3 class="font-bold text-gray-800 text-sm">Take Photo</h3>
+    <div id="student-camera-modal" class="fixed inset-0 bg-black/95 hidden items-center justify-center z-[10003] p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden p-5 space-y-4">
+            <div class="flex justify-between items-center border-b pb-2.5">
+                <h3 class="font-bold text-gray-800 text-sm flex items-center gap-2"><i class="fas fa-camera text-blue-600"></i> Take Photo (1:1 Square)</h3>
                 <div class="flex items-center gap-2">
                     <button type="button" id="student-camera-flip-btn" class="p-1.5 px-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition" title="Switch Camera (Front / Back)">
-                        <i class="fas fa-camera-rotate"></i> Flip Camera
+                        <i class="fas fa-camera-rotate"></i> Flip
                     </button>
-                    <button type="button" id="student-camera-close-btn" class="text-gray-500 hover:text-gray-700 text-xl font-bold">&times;</button>
+                    <button type="button" id="student-camera-close-btn" class="text-gray-500 hover:text-gray-700 text-xl font-bold w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100">&times;</button>
                 </div>
             </div>
-            <div class="relative aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center">
+            <div class="relative w-full max-w-[280px] aspect-square mx-auto bg-black rounded-xl overflow-hidden flex items-center justify-center border-2 border-blue-500/40 shadow-inner">
                 <video id="student-camera-video" class="w-full h-full object-cover" playsinline muted></video>
+                <div class="pointer-events-none absolute inset-0 border-2 border-white/30 rounded-xl"></div>
             </div>
+            <p class="text-[11px] text-center text-slate-500 font-medium">Position face inside the square frame</p>
             <div class="flex justify-end gap-2 border-t pt-3">
-                <button type="button" id="student-camera-cancel-btn" class="px-4 py-2 border rounded text-xs font-bold text-gray-600">Close</button>
-                <button type="button" id="student-camera-capture-btn" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold shadow-md flex items-center gap-1">
-                    <i class="fas fa-camera"></i> Capture
+                <button type="button" id="student-camera-cancel-btn" class="px-4 py-2 border rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-50">Cancel</button>
+                <button type="button" id="student-camera-capture-btn" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-md flex items-center gap-1.5">
+                    <i class="fas fa-camera"></i> Capture Photo
                 </button>
             </div>
         </div>
     </div>
 
     <!-- Student Crop Modal -->
-    <div id="student-crop-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-[10001] p-4">
-        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden p-5 space-y-4">
-            <div class="flex justify-between items-center border-b pb-2">
-                <h3 class="font-bold text-gray-800 text-sm">Crop Photo</h3>
-                <button type="button" id="student-crop-close-btn" class="text-gray-500 hover:text-gray-700 text-xl font-bold">&times;</button>
+    <div id="student-crop-modal" class="fixed inset-0 bg-black/85 hidden items-center justify-center z-[10004] p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden p-5 space-y-4">
+            <div class="flex justify-between items-center border-b pb-2.5">
+                <h3 class="font-bold text-gray-800 text-sm flex items-center gap-2"><i class="fas fa-crop-simple text-blue-600"></i> Crop Square Photo</h3>
+                <button type="button" id="student-crop-close-btn" class="text-gray-500 hover:text-gray-700 text-xl font-bold w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100">&times;</button>
             </div>
             <div class="flex flex-col items-center justify-center">
-                <div class="w-[150px] h-[150px] border-2 border-dashed border-blue-500 rounded-full overflow-hidden shadow-inner bg-gray-50">
-                    <canvas id="student-crop-canvas" width="150" height="150" class="w-full h-full"></canvas>
+                <div class="w-[200px] h-[200px] border-2 border-dashed border-blue-500 rounded-xl overflow-hidden shadow-inner bg-gray-50">
+                    <canvas id="student-crop-canvas" width="200" height="200" class="w-full h-full"></canvas>
                 </div>
-                <span class="text-xs text-gray-400 mt-2">Adjust zoom & position</span>
+                <span class="text-xs text-gray-400 mt-2">1:1 Square Frame — Adjust zoom & position</span>
             </div>
             <div class="space-y-3">
                 <div>
@@ -490,8 +492,8 @@
                 </div>
             </div>
             <div class="flex justify-end gap-2 border-t pt-3">
-                <button type="button" id="student-crop-cancel-btn" class="px-4 py-2 border rounded text-xs font-bold text-gray-600">Cancel</button>
-                <button type="button" id="student-crop-save-btn" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold shadow-md">Apply Crop</button>
+                <button type="button" id="student-crop-cancel-btn" class="px-4 py-2 border rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-50">Cancel</button>
+                <button type="button" id="student-crop-save-btn" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-md">Save Square Photo</button>
             </div>
         </div>
     </div>
@@ -506,9 +508,9 @@
                 <button type="button" id="student-edit-top-close-btn" class="text-gray-400 hover:text-gray-700 text-xl font-bold w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition">&times;</button>
             </div>
             <div class="space-y-4 px-1 text-center">
-                <!-- Circular Photo Preview -->
+                <!-- Square Photo Preview -->
                 <div class="flex flex-col items-center justify-center">
-                    <div class="relative w-28 h-28 rounded-full overflow-hidden border-4 border-white shadow-xl ring-2 ring-blue-100 bg-slate-100 flex items-center justify-center">
+                    <div class="relative w-28 h-28 rounded-2xl overflow-hidden border-4 border-white shadow-xl ring-2 ring-blue-100 bg-slate-100 flex items-center justify-center">
                         <img id="top-edit-photo-preview" src="" class="w-full h-full object-cover hidden" alt="Photo Preview">
                         <i id="top-edit-photo-placeholder" class="fas fa-user text-4xl text-slate-400"></i>
                     </div>

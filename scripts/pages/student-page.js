@@ -1295,8 +1295,9 @@ window.AppSession?.guardStudentPage?.();
                     stream = await navigator.mediaDevices.getUserMedia({
                         video: {
                             facingMode: { ideal: facingMode },
-                            width: { ideal: 1280 },
-                            height: { ideal: 720 }
+                            width: { ideal: 720 },
+                            height: { ideal: 720 },
+                            aspectRatio: { ideal: 1 }
                         }
                     });
                 } catch (e1) {
@@ -1320,15 +1321,20 @@ window.AppSession?.guardStudentPage?.();
         const drawStudentCropCanvas = () => {
             const canvas = document.getElementById('student-crop-canvas');
             if (!canvas || !activeCropImg) return;
+            const size = canvas.width || 200;
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, 150, 150);
+            ctx.fillRect(0, 0, size, size);
 
-            const drawWidth = 150 * cropZoom;
-            const drawHeight = (activeCropImg.height / activeCropImg.width) * drawWidth;
+            const imgW = activeCropImg.width || 1;
+            const imgH = activeCropImg.height || 1;
+            // Cover scale so the image fills the 1:1 square at 1.0x zoom
+            const baseScale = Math.max(size / imgW, size / imgH);
+            const drawWidth = imgW * baseScale * cropZoom;
+            const drawHeight = imgH * baseScale * cropZoom;
 
-            const xOffset = (150 - drawWidth) / 2 + (cropPanX * drawWidth / 100);
-            const yOffset = (150 - drawHeight) / 2 + (cropPanY * drawHeight / 100);
+            const xOffset = (size - drawWidth) / 2 + (cropPanX * drawWidth / 100);
+            const yOffset = (size - drawHeight) / 2 + (cropPanY * drawHeight / 100);
 
             ctx.drawImage(activeCropImg, xOffset, yOffset, drawWidth, drawHeight);
         };
@@ -1341,6 +1347,11 @@ window.AppSession?.guardStudentPage?.();
                 fileInput.addEventListener('change', (e) => {
                     const file = e.target.files?.[0];
                     if (file) {
+                        const topModal = document.getElementById('student-edit-top-modal');
+                        if (topModal) {
+                            topModal.classList.add('hidden');
+                            topModal.classList.remove('flex');
+                        }
                         const reader = new FileReader();
                         reader.onload = () => {
                             const img = new Image();
@@ -1361,11 +1372,17 @@ window.AppSession?.guardStudentPage?.();
                         };
                         reader.readAsDataURL(file);
                     }
+                    e.target.value = '';
                 });
             }
 
             if (cameraBtn) {
                 cameraBtn.addEventListener('click', async () => {
+                    const topModal = document.getElementById('student-edit-top-modal');
+                    if (topModal) {
+                        topModal.classList.add('hidden');
+                        topModal.classList.remove('flex');
+                    }
                     const modal = document.getElementById('student-camera-modal');
                     const ok = await startStudentCamera('user');
                     if (ok && modal) {
@@ -1385,11 +1402,17 @@ window.AppSession?.guardStudentPage?.();
             document.getElementById('student-camera-capture-btn')?.addEventListener('click', () => {
                 const video = document.getElementById('student-camera-video');
                 if (!video) return;
+                const vw = video.videoWidth || 640;
+                const vh = video.videoHeight || 640;
+                const squareSide = Math.min(vw, vh);
+                const sx = Math.max(0, (vw - squareSide) / 2);
+                const sy = Math.max(0, (vh - squareSide) / 2);
+
                 const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth || 640;
-                canvas.height = video.videoHeight || 480;
+                canvas.width = 600;
+                canvas.height = 600;
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                ctx.drawImage(video, sx, sy, squareSide, squareSide, 0, 0, 600, 600);
                 stopStudentCamera();
 
                 const img = new Image();
@@ -1406,7 +1429,7 @@ window.AppSession?.guardStudentPage?.();
                     document.getElementById('student-crop-modal').classList.add('flex');
                     drawStudentCropCanvas();
                 };
-                img.src = canvas.toDataURL('image/jpeg');
+                img.src = canvas.toDataURL('image/jpeg', 0.92);
             });
 
             // Crop modal control bindings
@@ -1908,12 +1931,16 @@ window.AppSession?.guardStudentPage?.();
                 document.getElementById('student-photo-file-input')?.click();
             });
 
-            cameraBtn?.addEventListener('click', () => {
+            cameraBtn?.addEventListener('click', async () => {
+                closeModal();
                 const cameraModal = document.getElementById('student-camera-modal');
                 if (cameraModal) {
                     cameraModal.classList.remove('hidden');
                     cameraModal.classList.add('flex');
-                    startStudentCamera();
+                    const ok = await startStudentCamera('user');
+                    if (!ok) {
+                        stopStudentCamera();
+                    }
                 }
             });
 

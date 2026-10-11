@@ -1312,8 +1312,18 @@ window.AppSession?.guardStudentPage?.();
                 await video.play();
                 return true;
             } catch (err) {
-                console.error('Camera access error:', err);
-                alert('Unable to access camera. Please allow camera permissions in your browser.');
+                console.warn('Camera access unavailable:', err?.message || err);
+                const cameraModal = document.getElementById('student-camera-modal');
+                if (cameraModal) {
+                    cameraModal.classList.add('hidden');
+                    cameraModal.classList.remove('flex');
+                }
+                const fileInput = document.getElementById('student-photo-file-input');
+                if (fileInput) {
+                    fileInput.setAttribute('capture', 'user');
+                    fileInput.click();
+                    setTimeout(() => fileInput.removeAttribute('capture'), 1000);
+                }
                 return false;
             }
         };
@@ -1473,8 +1483,8 @@ window.AppSession?.guardStudentPage?.();
                 }
 
                 // If still over 50KB, scale down resolution iteratively
-                let currentWidth = 150;
-                let currentHeight = 150;
+                let currentWidth = 200;
+                let currentHeight = 200;
                 while (base64.length * 0.75 > 50 * 1024 && currentWidth > 60) {
                     currentWidth -= 15;
                     currentHeight -= 15;
@@ -1489,13 +1499,16 @@ window.AppSession?.guardStudentPage?.();
                 document.getElementById('student-crop-modal').classList.add('hidden');
                 document.getElementById('student-crop-modal').classList.remove('flex');
 
-                // Render updated image on UI immediately
-                document.getElementById('dash-avatar').innerHTML = `<img src="${base64}" class="w-full h-full object-cover rounded-full animate-pulse" alt="Profile Photo">`;
+                // Render updated image on UI immediately with circular progress ring
+                document.getElementById('dash-avatar').innerHTML = `<img src="${base64}" class="w-full h-full object-cover rounded-full" alt="Profile Photo">`;
+                const progressCtrl = startAvatarCircularProgress();
 
                 try {
+                    progressCtrl.setProgress(35);
                     // Save under student document in 'students' collection
                     const studentDocRef = doc(db, `${BASE_PATH}/students`, studentId);
                     const studentSnap = await getDoc(studentDocRef);
+                    progressCtrl.setProgress(65);
                     if (studentSnap.exists()) {
                         const stData = studentSnap.data();
                         const updatedProfile = { ...(stData.profile || {}), photo: base64 };
@@ -1505,12 +1518,14 @@ window.AppSession?.guardStudentPage?.();
                         }, { merge: true });
                     }
 
+                    progressCtrl.setProgress(88);
                     // Also save under studentPhotoSubmissions/{studentId} for redundancy
                     await setDoc(doc(db, `${BASE_PATH}/studentPhotoSubmissions`, studentId), {
                         photo: base64,
                         updatedAt: Date.now()
                     }, { merge: true });
 
+                    await progressCtrl.complete();
                     document.getElementById('dash-avatar').innerHTML = `<img src="${base64}" class="w-full h-full object-cover rounded-full" alt="Profile Photo">`;
                     const viewerImgEl = document.getElementById('student-photo-viewer-img');
                     if (viewerImgEl) viewerImgEl.src = base64;
@@ -1526,12 +1541,77 @@ window.AppSession?.guardStudentPage?.();
                         studentProfile.photo = base64;
                         if (studentProfile.profile) studentProfile.profile.photo = base64;
                     }
-                    alert('Profile photo updated successfully!');
                 } catch (err) {
+                    progressCtrl.fail();
                     console.error('Failed to save student photo:', err);
                     alert('Failed to save photo: ' + err.message);
                 }
             });
+        };
+
+        const startAvatarCircularProgress = () => {
+            const ringSvg = document.getElementById('student-photo-progress-ring');
+            const circle = document.getElementById('student-photo-progress-circle');
+            const overlay = document.getElementById('student-photo-progress-overlay');
+            const textEl = document.getElementById('student-photo-progress-text');
+            const circumference = 351.86;
+            let currentPct = 8;
+
+            const applyPct = (pct, color = '#2563eb') => {
+                currentPct = Math.max(0, Math.min(100, Math.round(pct)));
+                if (circle) {
+                    const offset = circumference - (currentPct / 100) * circumference;
+                    circle.style.strokeDashoffset = String(offset);
+                    circle.style.stroke = color;
+                }
+                if (textEl) {
+                    textEl.innerHTML = currentPct >= 100 ? `<i class="fas fa-check text-emerald-400 mr-1"></i>100%` : `${currentPct}%`;
+                }
+            };
+
+            if (ringSvg) ringSvg.classList.remove('hidden');
+            if (overlay) {
+                overlay.classList.remove('hidden');
+                overlay.classList.add('flex');
+            }
+            applyPct(8);
+
+            const interval = setInterval(() => {
+                if (currentPct < 90) {
+                    applyPct(currentPct + 4);
+                }
+            }, 140);
+
+            return {
+                setProgress: (val) => {
+                    if (val > currentPct) applyPct(val);
+                },
+                complete: () => new Promise((resolve) => {
+                    clearInterval(interval);
+                    applyPct(100, '#10b981');
+                    setTimeout(() => {
+                        if (ringSvg) ringSvg.classList.add('hidden');
+                        if (overlay) {
+                            overlay.classList.add('hidden');
+                            overlay.classList.remove('flex');
+                        }
+                        applyPct(0);
+                        resolve();
+                    }, 650);
+                }),
+                fail: () => {
+                    clearInterval(interval);
+                    applyPct(100, '#ef4444');
+                    setTimeout(() => {
+                        if (ringSvg) ringSvg.classList.add('hidden');
+                        if (overlay) {
+                            overlay.classList.add('hidden');
+                            overlay.classList.remove('flex');
+                        }
+                        applyPct(0);
+                    }, 800);
+                }
+            };
         };
 
         const stopStudentCamera = () => {
@@ -1768,12 +1848,20 @@ window.AppSession?.guardStudentPage?.();
         };
 
         const renderConcessionAndGroupSection = (st) => {
+            const sectionEl = document.getElementById('dash-concession-group-section');
             const detailsEl = document.getElementById('dash-concession-group-details');
             const badgeEl = document.getElementById('dash-group-badge');
             if (!detailsEl) return;
 
             const activeGroup = (studentGroups || []).find((g) => g.memberIds?.includes(studentId));
             const hasConcession = st.concessionFee !== undefined && st.concessionFee !== null && st.concessionFee !== "";
+
+            if (!activeGroup && !hasConcession) {
+                if (sectionEl) sectionEl.classList.add('hidden');
+                detailsEl.innerHTML = '';
+                return;
+            }
+            if (sectionEl) sectionEl.classList.remove('hidden');
 
             let html = '';
             let badgeText = 'Standard Fee';
@@ -1854,19 +1942,6 @@ window.AppSession?.guardStudentPage?.();
                     <p class="text-xs text-emerald-800 leading-relaxed">
                         This student has been granted an institutional fee concession in the admin portal. Monthly dues will be calculated at ₹${concFee.toLocaleString('en-IN')}.
                     </p>
-                </div>`;
-            }
-
-            if (!activeGroup && !hasConcession) {
-                html = `
-                <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-4 flex items-center gap-3 text-slate-600">
-                    <div class="w-9 h-9 rounded-lg bg-slate-200 text-slate-600 flex items-center justify-center shrink-0">
-                        <i class="fas fa-info-circle text-base"></i>
-                    </div>
-                    <div>
-                        <div class="text-xs font-bold text-slate-800">Standard Institutional Fee</div>
-                        <div class="text-xs text-slate-500 mt-0.5">No special concession or sibling group has been assigned for this student in the admin portal. Regular standard fee rates apply.</div>
-                    </div>
                 </div>`;
             }
 
@@ -1953,8 +2028,11 @@ window.AppSession?.guardStudentPage?.();
 
                 saveBtn.disabled = true;
                 saveBtn.textContent = 'Saving...';
+                closeModal();
+                const progressCtrl = startAvatarCircularProgress();
 
                 try {
+                    progressCtrl.setProgress(35);
                     const studentRef = doc(db, `${BASE_PATH}/students`, studentId);
                     const currentProf = currentSt.profile || {};
                     const updatedProf = {
@@ -1967,6 +2045,7 @@ window.AppSession?.guardStudentPage?.();
                         profile: updatedProf
                     }, { merge: true });
 
+                    progressCtrl.setProgress(80);
                     await setDoc(doc(db, `${BASE_PATH}/studentPhotoSubmissions`, studentId), {
                         photo: newPhoto,
                         updatedAt: Date.now()
@@ -1975,10 +2054,10 @@ window.AppSession?.guardStudentPage?.();
                     currentSt.photo = newPhoto;
                     currentSt.profile = updatedProf;
 
+                    await progressCtrl.complete();
                     renderStudentComprehensiveProfile(currentSt);
-                    closeModal();
-                    alert('Profile photo updated successfully!');
                 } catch (err) {
+                    progressCtrl.fail();
                     console.error('Failed to update photo:', err);
                     alert('Failed to update photo: ' + err.message);
                 } finally {
@@ -2540,12 +2619,12 @@ window.AppSession?.guardStudentPage?.();
                 onSnapshot(doc(db, `${BASE_PATH}/settings`, 'content'), snap => {
                     rawNotices = snap.exists() && Array.isArray(snap.data().notices) ? snap.data().notices : [];
                     if(window.triggerNotificationUpdate) window.triggerNotificationUpdate();
-                });
+                }, (err) => console.warn('Content listener warning:', err));
 
                 onSnapshot(collection(db, `${BASE_PATH}/systemNotifications`), snap => {
                     rawSysNotifs = snap.docs.map(d => ({id: d.id, ...d.data()}));
                     if(window.triggerNotificationUpdate) window.triggerNotificationUpdate();
-                });
+                }, (err) => console.warn('System notifications listener warning:', err));
 
                 onSnapshot(doc(db, `${BASE_PATH}/studentNotificationState`, studentId), snap => {
                     if(snap.exists()) {
@@ -2554,7 +2633,7 @@ window.AppSession?.guardStudentPage?.();
                         notifState.readIds = data.readIds || [];
                     }
                     if(window.triggerNotificationUpdate) window.triggerNotificationUpdate();
-                });
+                }, (err) => console.warn('Notification state listener warning:', err));
 
                 onSnapshot(doc(db, `${BASE_PATH}/settings`, 'config'), snap => {
                     const conf = snap.exists() ? snap.data() : {};

@@ -59,10 +59,16 @@ service cloud.firestore {
     }
 
     function validSessionRegistryWrite() {
-      return hasOnlyKeys(request.resource.data, ['lastHeartbeatAt', 'updatedAt', 'createdAt', 'sessionId', 'userAgent'])
-        && request.resource.data.sessionId is string
-        && request.resource.data.userAgent is string
-        && isIsoTimestamp(request.resource.data.updatedAt);
+      return (
+          hasOnlyKeys(request.resource.data, ['lastHeartbeatAt', 'updatedAt', 'createdAt', 'sessionId', 'userAgent'])
+          && request.resource.data.sessionId is string
+          && request.resource.data.userAgent is string
+          && isIsoTimestamp(request.resource.data.updatedAt)
+        )
+        || (
+          'sessions' in request.resource.data
+          && request.resource.data.sessions is map
+        );
     }
 
     function validPaymentWrite() {
@@ -129,6 +135,11 @@ service cloud.firestore {
       allow write: if hasOnlyKeys(request.resource.data, ['lastMarkedAllReadAt', 'readIds'])
         && (!('lastMarkedAllReadAt' in request.resource.data) || request.resource.data.lastMarkedAllReadAt is number)
         && (!('readIds' in request.resource.data) || request.resource.data.readIds is list);
+    }
+
+    match /institutions/{institutionId}/systemNotifications/{docId} {
+      allow read: if true;
+      allow write: if isAdmin(institutionId);
     }
 
     match /institutions/{institutionId}/payments/{docId} {

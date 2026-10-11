@@ -235,9 +235,9 @@ window.AppSession?.guardStudentPage?.();
         });
 
         // ----------------------------------------------------
-        // NOTIFICATION ENGINE LOGIC (WITH APP BADGE & PHONE PUSH ALERTS)
+        // NOTIFICATION ENGINE LOGIC (WITH APP BADGE, ENABLE/DISABLE TOGGLE & DAILY DUE RE-TRIGGER)
         // ----------------------------------------------------
-        let notifState = { lastMarkedAllReadAt: 0, readIds: [] };
+        let notifState = { lastMarkedAllReadAt: 0, readIds: [], feeDismissedDates: {} };
         let notifStateLoaded = false;
         let rawSysNotifs = [];
         let rawNotices = [];
@@ -246,20 +246,101 @@ window.AppSession?.guardStudentPage?.();
         let latestMergedNotifications = [];
         let baseDocumentTitle = document.title || 'Student Dashboard';
 
-        const getNotifiedPushStoreKey = () => `student_push_notified_v1_${window.AppSession?.getStudentId?.() || 'default'}`;
-        const getNotifiedPushSet = () => {
+        const getTodayDateKey = () => {
+            const now = new Date();
+            return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        };
+
+        const getPhoneNotifyPrefKey = () => `student_phone_notify_pref_v2_${window.AppSession?.getStudentId?.() || 'default'}`;
+        const getPhoneNotifyPromptShownKey = () => `student_phone_notify_prompted_v2_${window.AppSession?.getStudentId?.() || 'default'}`;
+        const getNotifiedPushStoreKey = () => `student_push_notified_v2_${window.AppSession?.getStudentId?.() || 'default'}`;
+        const getFeeDismissedLocalKey = () => `student_fee_dismissed_dates_v2_${window.AppSession?.getStudentId?.() || 'default'}`;
+
+        const getLocalFeeDismissedMap = () => {
+            try {
+                const raw = localStorage.getItem(getFeeDismissedLocalKey());
+                const parsed = raw ? JSON.parse(raw) : {};
+                return (parsed && typeof parsed === 'object') ? parsed : {};
+            } catch (_e) {
+                return {};
+            }
+        };
+
+        const saveLocalFeeDismissedMap = (mapObj = {}) => {
+            try {
+                localStorage.setItem(getFeeDismissedLocalKey(), JSON.stringify(mapObj || {}));
+            } catch (_e) {}
+        };
+
+        const isFeeDismissedForToday = (notifId) => {
+            const todayKey = getTodayDateKey();
+            const localMap = getLocalFeeDismissedMap();
+            const remoteMap = (notifState.feeDismissedDates && typeof notifState.feeDismissedDates === 'object')
+                ? notifState.feeDismissedDates
+                : {};
+            return localMap[notifId] === todayKey || remoteMap[notifId] === todayKey;
+        };
+
+        const dismissFeeNotificationForToday = async (notifIds = []) => {
+            const ids = (Array.isArray(notifIds) ? notifIds : [notifIds]).filter(Boolean);
+            if (!ids.length) return;
+            const todayKey = getTodayDateKey();
+            const localMap = getLocalFeeDismissedMap();
+            if (!notifState.feeDismissedDates || typeof notifState.feeDismissedDates !== 'object') {
+                notifState.feeDismissedDates = {};
+            }
+            ids.forEach((id) => {
+                localMap[id] = todayKey;
+                notifState.feeDismissedDates[id] = todayKey;
+            });
+            saveLocalFeeDismissedMap(localMap);
+
+            // Also close any active phone notification in status bar for these IDs
+            if ('serviceWorker' in navigator) {
+                try {
+                    const reg = await navigator.serviceWorker.ready;
+                    if (reg && typeof reg.getNotifications === 'function') {
+                        const activeNotifs = await reg.getNotifications();
+                        activeNotifs.forEach((n) => {
+                            if (ids.includes(n.data?.notifId)) n.close();
+                        });
+                    }
+                } catch (_e) {}
+            }
+
+            renderNotificationPanel();
+            try {
+                await setDoc(doc(db, BASE_PATH + '/studentNotificationState', studentId), {
+                    feeDismissedDates: notifState.feeDismissedDates
+                }, { merge: true });
+            } catch (_e) {}
+        };
+
+        const isPhoneNotificationEnabled = () => {
+            const pref = localStorage.getItem(getPhoneNotifyPrefKey());
+            if (pref === 'disabled') return false;
+            if (pref === 'enabled') {
+                if ('Notification' in window && Notification.permission === 'denied') return false;
+                return true;
+            }
+            return false;
+        };
+
+        const getNotifiedPushMap = () => {
             try {
                 const raw = localStorage.getItem(getNotifiedPushStoreKey());
                 const parsed = raw ? JSON.parse(raw) : null;
-                return Array.isArray(parsed) ? new Set(parsed) : null;
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+                return null;
             } catch (_e) {
                 return null;
             }
         };
-        const saveNotifiedPushSet = (idSet) => {
+
+        const saveNotifiedPushMap = (mapObj) => {
             try {
-                const arr = Array.from(idSet).slice(-250);
-                localStorage.setItem(getNotifiedPushStoreKey(), JSON.stringify(arr));
+                const entries = Object.entries(mapObj || {}).slice(-250);
+                localStorage.setItem(getNotifiedPushStoreKey(), JSON.stringify(Object.fromEntries(entries)));
             } catch (_e) {}
         };
 
@@ -287,30 +368,39 @@ window.AppSession?.guardStudentPage?.();
 
         const updatePhoneNotifyPermissionBanner = () => {
             const banner = document.getElementById('student-notify-perm-banner');
-            if (!banner) return;
-            if (!('Notification' in window) || Notification.permission === 'granted') {
-                banner.classList.add('hidden');
+            const btn = document.getElementById('student-enable-phone-notify-btn');
+            const textEl = document.getElementById('student-notify-perm-text');
+            const subtextEl = document.getElementById('student-notify-perm-subtext');
+            const iconEl = document.getElementById('student-notify-perm-icon');
+            if (!banner || !btn) return;
+
+            banner.classList.remove('hidden');
+            const enabled = isPhoneNotificationEnabled();
+            const browserDenied = ('Notification' in window) && Notification.permission === 'denied';
+
+            if (enabled) {
+                banner.className = 'px-3.5 py-2.5 bg-emerald-50/90 border-b border-emerald-100 flex items-center justify-between gap-2.5';
+                if (iconEl) iconEl.className = 'fas fa-bell text-emerald-600 text-sm shrink-0';
+                if (textEl) textEl.textContent = 'Phone notifications are active';
+                if (subtextEl) subtextEl.textContent = 'Instant notices & daily due alerts enabled';
+                btn.textContent = 'Disable';
+                btn.className = 'shrink-0 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-[11px] font-bold px-3 py-1.5 rounded-lg transition cursor-pointer';
             } else {
-                banner.classList.remove('hidden');
+                banner.className = 'px-3.5 py-2.5 bg-blue-50/90 border-b border-blue-100 flex items-center justify-between gap-2.5';
+                if (iconEl) iconEl.className = 'fas fa-mobile-screen-button text-blue-600 text-sm shrink-0';
+                if (textEl) textEl.textContent = 'Get instant notices & alerts in your phone notification center';
+                if (subtextEl) {
+                    subtextEl.textContent = browserDenied
+                        ? 'Allow notification permission in browser settings or tap Enable'
+                        : 'Tap Enable to receive phone notifications';
+                }
+                btn.textContent = 'Enable';
+                btn.className = 'shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg shadow-xs transition cursor-pointer';
             }
         };
 
-        const requestPhoneNotificationPermission = async () => {
-            if (!('Notification' in window)) return false;
-            if (Notification.permission === 'granted') {
-                updatePhoneNotifyPermissionBanner();
-                return true;
-            }
-            try {
-                const status = await Notification.requestPermission();
-                updatePhoneNotifyPermissionBanner();
-                return status === 'granted';
-            } catch (_e) {
-                return false;
-            }
-        };
-
-        const triggerPhoneSystemNotification = async (item) => {
+        const triggerPhoneSystemNotification = async (item, forceShow = false) => {
+            if (!forceShow && !isPhoneNotificationEnabled()) return;
             if (!('Notification' in window) || Notification.permission !== 'granted') return;
             const logoSrc = document.getElementById('header-logo')?.getAttribute('src') || './assets/images/logo.png';
             const payload = {
@@ -354,39 +444,130 @@ window.AppSession?.guardStudentPage?.();
                     window.handleNotifyClick(item.id, item.target || '');
                     n.close();
                 };
+                n.onclose = () => {
+                    if (String(item.id || '').startsWith('fee-')) {
+                        dismissFeeNotificationForToday([item.id]);
+                    }
+                };
             } catch (_err) {}
         };
 
-        const dispatchNewPhoneNotifications = (unreadItems = []) => {
-            if (!notifStateLoaded) return;
-            const existingSet = getNotifiedPushSet();
-            // First time on this device for this student: seed current unread notices/alerts,
-            // and if there is a brand-new notice/alert from the last 24 hours, notify the phone once.
-            if (!existingSet) {
-                const initialSet = new Set();
-                const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
-                let latestRecent = null;
-                unreadItems.forEach((item) => {
-                    initialSet.add(item.id);
-                    if (!latestRecent && item.timestamp >= oneDayAgo) {
-                        latestRecent = item;
+        const enablePhoneNotifications = async () => {
+            let granted = false;
+            if ('Notification' in window) {
+                if (Notification.permission === 'granted') {
+                    granted = true;
+                } else {
+                    try {
+                        const result = await Notification.requestPermission();
+                        granted = result === 'granted';
+                    } catch (_e) {
+                        granted = false;
                     }
-                });
-                saveNotifiedPushSet(initialSet);
-                if (latestRecent) {
-                    triggerPhoneSystemNotification(latestRecent);
                 }
+            }
+
+            if ('Notification' in window && Notification.permission === 'denied') {
+                localStorage.setItem(getPhoneNotifyPrefKey(), 'disabled');
+                updatePhoneNotifyPermissionBanner();
+                openStudentDetailModal(
+                    'Notification Permission Blocked',
+                    `<div class="space-y-2 text-xs text-slate-700 leading-relaxed">
+                        <p class="font-bold text-red-600"><i class="fas fa-circle-exclamation mr-1"></i> Browser notification permission is currently blocked.</p>
+                        <p>Please tap the lock / tune icon next to the address bar in your browser, allow <b>Notifications</b>, and then tap <b>Enable</b> again.</p>
+                    </div>`
+                );
+                return false;
+            }
+
+            // Enable preference (works even if preview environment handles permissions internally)
+            localStorage.setItem(getPhoneNotifyPrefKey(), 'enabled');
+            localStorage.setItem(getPhoneNotifyPromptShownKey(), '1');
+            updatePhoneNotifyPermissionBanner();
+
+            // Reset push tracker for current unread items so current unread/due items immediately appear on the phone
+            const unreadItems = latestMergedNotifications.filter((n) => !n.isRead);
+            if (granted) {
+                if (unreadItems.length > 0) {
+                    const todayKey = getTodayDateKey();
+                    const pushMap = getNotifiedPushMap() || {};
+                    unreadItems.slice(0, 3).forEach((item) => {
+                        pushMap[item.id] = item.type === 'fee' ? todayKey : 'sent';
+                        triggerPhoneSystemNotification(item, true);
+                    });
+                    saveNotifiedPushMap(pushMap);
+                } else {
+                    triggerPhoneSystemNotification({
+                        id: `welcome-enable-${Date.now()}`,
+                        title: 'Notifications Enabled',
+                        message: 'You will now receive instant notices & daily fee due alerts on your phone.',
+                        target: 'home-page'
+                    }, true);
+                }
+            }
+            return true;
+        };
+
+        const disablePhoneNotifications = async () => {
+            localStorage.setItem(getPhoneNotifyPrefKey(), 'disabled');
+            localStorage.setItem(getPhoneNotifyPromptShownKey(), '1');
+            updatePhoneNotifyPermissionBanner();
+
+            // Close any active phone notifications from this app
+            if ('serviceWorker' in navigator) {
+                try {
+                    const reg = await navigator.serviceWorker.ready;
+                    if (reg && typeof reg.getNotifications === 'function') {
+                        const list = await reg.getNotifications();
+                        list.forEach((n) => n.close());
+                    }
+                } catch (_e) {}
+            }
+        };
+
+        const maybeShowStartupNotificationPrompt = () => {
+            const modal = document.getElementById('student-notify-confirm-modal');
+            if (!modal) return;
+            const pref = localStorage.getItem(getPhoneNotifyPrefKey());
+            const alreadyPrompted = localStorage.getItem(getPhoneNotifyPromptShownKey());
+
+            // If user already granted in browser and hasn't explicitly disabled, auto-enable seamlessly
+            if (!pref && 'Notification' in window && Notification.permission === 'granted') {
+                localStorage.setItem(getPhoneNotifyPrefKey(), 'enabled');
+                updatePhoneNotifyPermissionBanner();
                 return;
             }
 
-            const newItems = unreadItems.filter((item) => !existingSet.has(item.id));
-            if (!newItems.length) return;
+            // Show default startup confirmation popup if not yet configured/prompted
+            if (!pref && !alreadyPrompted) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+        };
 
-            newItems.forEach((item) => existingSet.add(item.id));
-            saveNotifiedPushSet(existingSet);
+        const dispatchNewPhoneNotifications = (unreadItems = []) => {
+            if (!notifStateLoaded || !isPhoneNotificationEnabled()) return;
+            const todayKey = getTodayDateKey();
+            const existingMap = getNotifiedPushMap() || {};
 
-            // Dispatch up to 3 newest alerts to avoid flooding the phone status bar
-            newItems.slice(0, 3).forEach((item) => {
+            // Fee due items notify once per calendar day (if still unpaid and not dismissed today).
+            // Other notices/results notify once per unique item ID.
+            const itemsToPush = unreadItems.filter((item) => {
+                if (item.type === 'fee') {
+                    return existingMap[item.id] !== todayKey;
+                }
+                return !existingMap[item.id];
+            });
+
+            if (!itemsToPush.length) return;
+
+            itemsToPush.forEach((item) => {
+                existingMap[item.id] = item.type === 'fee' ? todayKey : 'sent';
+            });
+            saveNotifiedPushMap(existingMap);
+
+            // Dispatch up to 3 newest alerts to the phone notification center
+            itemsToPush.slice(0, 3).forEach((item) => {
                 triggerPhoneSystemNotification(item);
             });
         };
@@ -569,9 +750,11 @@ window.AppSession?.guardStudentPage?.();
             latestMergedNotifications = merged;
 
             // Mark each notification read/unread accurately
+            // Fee notifications can be cleared for today (from phone notification center or panel),
+            // and automatically become unread/active again tomorrow if still unpaid.
             merged.forEach((notification) => {
                 const isRead = notification.type === 'fee'
-                    ? false
+                    ? isFeeDismissedForToday(notification.id)
                     : (
                         (notifState.lastMarkedAllReadAt > 0 && notification.timestamp <= notifState.lastMarkedAllReadAt) ||
                         notifState.readIds.includes(notification.id)
@@ -581,6 +764,7 @@ window.AppSession?.guardStudentPage?.();
 
             const unreadNotifications = merged.filter((n) => !n.isRead);
             const unreadCount = unreadNotifications.length;
+            updatePhoneNotifyPermissionBanner();
 
             // Update header bell badge & panel badge & phone app icon badge
             const badge = document.getElementById('student-notify-badge');
@@ -624,7 +808,7 @@ window.AppSession?.guardStudentPage?.();
             let currentGroup = '';
 
             displayList.forEach(n => {
-                let groupLabel = n.isRead ? 'Earlier (Read)' : 'Older';
+                let groupLabel = n.isRead ? 'Earlier (Cleared / Read)' : 'Older';
                 if (!n.isRead) {
                     if (n.timestamp >= todayStart) groupLabel = 'New Today';
                     else if (n.timestamp >= yesterdayStart) groupLabel = 'Yesterday';
@@ -638,24 +822,30 @@ window.AppSession?.guardStudentPage?.();
 
                 const iconClass = n.type === 'sys' ? 'sys' : (n.type === 'fee' ? 'fee' : (n.type === 'result' ? 'result' : 'notice'));
                 const timeAgoStr = n.timestamp ? new Date(n.timestamp).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year: 'numeric' }) : 'Just now';
+                const canClearDueToday = n.type === 'fee' && !n.isRead;
 
                 listContainer.innerHTML += `
-                    <button type="button" class="notify-item ${n.isRead ? 'opacity-75' : 'unread'}" data-notification-id="${escapeHtml(n.id)}" data-notification-target="${escapeHtml(n.target || '')}">
+                    <div class="notify-item ${n.isRead ? 'opacity-75' : 'unread'} flex items-start gap-2.5" data-notification-id="${escapeHtml(n.id)}" data-notification-target="${escapeHtml(n.target || '')}" role="button" tabindex="0">
                         <div class="notify-icon ${iconClass}"><i class="fas ${n.icon}"></i></div>
-                        <div class="notify-content">
+                        <div class="notify-content flex-1 min-w-0">
                             <div class="notify-title">${escapeHtml(n.title)}</div>
                             <div class="notify-msg line-clamp-2">${escapeHtml(n.message)}</div>
-                            <div class="notify-time"><i class="far fa-clock text-[9px]"></i> ${timeAgoStr}</div>
+                            <div class="notify-time flex items-center justify-between gap-2 mt-1">
+                                <span><i class="far fa-clock text-[9px]"></i> ${timeAgoStr}</span>
+                                ${canClearDueToday ? `<span class="clear-due-today-btn text-[10px] font-extrabold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-0.5 rounded-md transition" data-clear-due-id="${escapeHtml(n.id)}" title="Clear for today (will remind again tomorrow if unpaid)">Clear Today</span>` : (n.type === 'fee' && n.isRead ? `<span class="text-[10px] font-bold text-slate-400">Cleared for today</span>` : '')}
+                            </div>
                         </div>
                         ${!n.isRead ? `<div class="notify-unread-dot"></div>` : ''}
-                    </button>
+                    </div>
                 `;
             });
         };
 
         window.handleNotifyClick = async (notifId, targetStr) => {
             const notification = latestMergedNotifications.find((item) => item.id === notifId);
-            if (notification && notification.type !== 'fee' && !notifState.readIds.includes(notifId)) {
+            if (notification && notification.type === 'fee') {
+                await dismissFeeNotificationForToday([notifId]);
+            } else if (notification && notification.type !== 'fee' && !notifState.readIds.includes(notifId)) {
                 notifState.readIds.push(notifId);
                 if (notifState.readIds.length > 200) notifState.readIds.shift();
                 renderNotificationPanel();
@@ -698,10 +888,29 @@ window.AppSession?.guardStudentPage?.();
         };
 
         document.getElementById('student-enable-phone-notify-btn')?.addEventListener('click', async () => {
-            await requestPhoneNotificationPermission();
+            if (isPhoneNotificationEnabled()) {
+                await disablePhoneNotifications();
+            } else {
+                await enablePhoneNotifications();
+            }
         });
 
-        // Listen for clicks from Service Worker system notifications
+        document.getElementById('student-notify-confirm-ok')?.addEventListener('click', async () => {
+            const modal = document.getElementById('student-notify-confirm-modal');
+            modal?.classList.add('hidden');
+            modal?.classList.remove('flex');
+            await enablePhoneNotifications();
+        });
+
+        document.getElementById('student-notify-confirm-later')?.addEventListener('click', () => {
+            const modal = document.getElementById('student-notify-confirm-modal');
+            modal?.classList.add('hidden');
+            modal?.classList.remove('flex');
+            localStorage.setItem(getPhoneNotifyPromptShownKey(), '1');
+            updatePhoneNotifyPermissionBanner();
+        });
+
+        // Listen for clicks or dismissals (swipe clear) from Service Worker system notifications
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.addEventListener('message', (event) => {
                 if (event.data?.type === 'NOTIFICATION_CLICKED') {
@@ -710,6 +919,11 @@ window.AppSession?.guardStudentPage?.();
                         window.handleNotifyClick(notifId, target || '');
                     } else if (target) {
                         activateStudentTab(target);
+                    }
+                } else if (event.data?.type === 'NOTIFICATION_CLOSED') {
+                    const { notifId } = event.data;
+                    if (notifId && String(notifId).startsWith('fee-')) {
+                        dismissFeeNotificationForToday([notifId]);
                     }
                 }
             });
@@ -720,18 +934,38 @@ window.AppSession?.guardStudentPage?.();
                 .filter((notification) => notification.type !== 'fee')
                 .map((notification) => notification.id)
                 .filter(Boolean);
+            const feeIds = latestMergedNotifications
+                .filter((notification) => notification.type === 'fee')
+                .map((notification) => notification.id)
+                .filter(Boolean);
+
             notifState.lastMarkedAllReadAt = Date.now();
             notifState.readIds = [...new Set([...notifState.readIds, ...nonFeeIds])].slice(-150);
-            renderNotificationPanel();
+
+            if (feeIds.length > 0) {
+                await dismissFeeNotificationForToday(feeIds);
+            } else {
+                renderNotificationPanel();
+            }
+
             try {
                 await setDoc(doc(db, BASE_PATH + '/studentNotificationState', studentId), {
                     lastMarkedAllReadAt: notifState.lastMarkedAllReadAt,
-                    readIds: notifState.readIds
+                    readIds: notifState.readIds,
+                    feeDismissedDates: notifState.feeDismissedDates || {}
                 }, { merge: true });
             } catch(e) { console.warn('Failed to mark all as read', e); }
         });
 
         document.getElementById('student-notify-list')?.addEventListener('click', (event) => {
+            const clearBtn = event.target.closest('.clear-due-today-btn');
+            if (clearBtn) {
+                event.preventDefault();
+                event.stopPropagation();
+                const clearId = clearBtn.dataset.clearDueId || '';
+                if (clearId) dismissFeeNotificationForToday([clearId]);
+                return;
+            }
             const button = event.target.closest('.notify-item');
             if (!button) return;
             event.preventDefault();
@@ -2852,6 +3086,7 @@ window.AppSession?.guardStudentPage?.();
                         const data = snap.data();
                         notifState.lastMarkedAllReadAt = data.lastMarkedAllReadAt || 0;
                         notifState.readIds = data.readIds || [];
+                        notifState.feeDismissedDates = (data.feeDismissedDates && typeof data.feeDismissedDates === 'object') ? data.feeDismissedDates : {};
                     }
                     notifStateLoaded = true;
                     if(window.triggerNotificationUpdate) window.triggerNotificationUpdate();
@@ -3095,7 +3330,18 @@ window.AppSession?.guardStudentPage?.();
                 // Clean White Screen logic (Fade out instantly)
                 const loader = document.getElementById('loading-screen');
                 loader.style.opacity = '0';
-                setTimeout(() => { loader.style.display = 'none'; }, 300);
+                setTimeout(() => {
+                    loader.style.display = 'none';
+                    maybeShowStartupNotificationPrompt();
+                }, 300);
+
+                // Automatically re-evaluate notifications when user opens/returns to the app on a new day
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'visible' && studentProfile) {
+                        rawFeeAlerts = buildFeeNotificationAlerts(studentProfile);
+                        renderNotificationPanel();
+                    }
+                });
 
             } catch (error) {
                 console.error("Error loading dashboard:", error);

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fee-tracker-v13';
+const CACHE_NAME = 'fee-tracker-v14';
 const IMAGE_CACHE_NAME = 'fee-tracker-images-v1';
 const ASSETS_TO_CACHE = [
   './',
@@ -220,6 +220,25 @@ self.addEventListener('notificationclick', (event) => {
         return self.clients.openWindow(`${targetUrl}${hash}`);
       }
       return null;
+    })
+  );
+});
+
+self.addEventListener('notificationclose', (event) => {
+  const notifData = event.notification?.data || {};
+  const notifId = notifData.notifId || '';
+  if (!notifId) return;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.includes('student.html')) {
+          client.postMessage({
+            type: 'NOTIFICATION_CLOSED',
+            notifId
+          });
+        }
+      }
     })
   );
 });

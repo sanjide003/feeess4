@@ -1010,6 +1010,12 @@ window.AppSession?.guardStudentPage?.();
         let feeItems = [], allPayments = [], siblingPayments = [], studentGroups = [], allStaff = [];
         let groupMemberProfileMap = {};
         let defaultFee = 200;
+        let feeCollectionConfig = {
+            startDay: 1,
+            endDay: 10,
+            notifyMode: 'month_start',
+            notifyDaysBefore: 5
+        };
         let studentPortalPerms = { allowPhotoUpload: false, allowDetailsEdit: false };
         let paymentDetails = {};
         let resultSchemas = [];
@@ -1247,6 +1253,18 @@ window.AppSession?.guardStudentPage?.();
                 dueItems
             };
         };
+        const formatOrdinalDayLabel = (day) => {
+            const n = Math.min(31, Math.max(1, parseInt(day, 10) || 1));
+            const rem100 = n % 100;
+            if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+            switch (n % 10) {
+                case 1: return `${n}st`;
+                case 2: return `${n}nd`;
+                case 3: return `${n}rd`;
+                default: return `${n}th`;
+            }
+        };
+
         const buildFeeNotificationAlerts = (st = {}) => {
             const alerts = [];
             const now = new Date();
@@ -1255,18 +1273,55 @@ window.AppSession?.guardStudentPage?.();
 
             if (currentYear) {
                 const currentSummary = getFeeYearSummary(st, currentYear);
-                const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+                const todayDate = now.getDate();
+                const daysInCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+                const startDay = Math.min(daysInCurrentMonth, Math.max(1, parseInt(feeCollectionConfig.startDay, 10) || 1));
+                const rawEndDay = Math.max(startDay, parseInt(feeCollectionConfig.endDay, 10) || 10);
+                const effectiveEndDay = Math.min(daysInCurrentMonth, rawEndDay);
+                const notifyMode = feeCollectionConfig.notifyMode || 'month_start';
+                const notifyDaysBefore = Math.min(28, Math.max(1, parseInt(feeCollectionConfig.notifyDaysBefore, 10) || 5));
+
+                let triggerDay = 1;
+                if (notifyMode === 'month_start') {
+                    triggerDay = 1;
+                } else if (notifyMode === 'collection_start') {
+                    triggerDay = startDay;
+                } else if (notifyMode === 'days_before_end') {
+                    triggerDay = Math.max(1, effectiveEndDay - notifyDaysBefore);
+                } else if (notifyMode === 'days_before_month_end') {
+                    triggerDay = Math.max(1, daysInCurrentMonth - notifyDaysBefore + 1);
+                }
+
+                const isPastCollectionWindowThisMonth = todayDate > effectiveEndDay;
+                const shouldNotifyCurrentMonth = todayDate >= triggerDay || isPastCollectionWindowThisMonth;
+                const windowText = `${formatOrdinalDayLabel(startDay)} to ${formatOrdinalDayLabel(effectiveEndDay)}`;
+
                 const currentMonthDue = currentSummary.dueItems.find((due) => due.monthIndex === now.getMonth());
-                if (currentMonthDue) {
-                    alerts.push({
-                        id: `fee-current-due-${currentYear}-${now.getMonth() + 1}-${currentMonthDue.item?.key || currentMonthDue.name}`,
-                        type: 'fee',
-                        icon: 'fa-calendar-check',
-                        title: `${formatMonthFeeCardName(currentMonthDue.name)} Fee Pending`,
-                        message: `${formatMonthFeeCardName(currentMonthDue.name)} fee of ${formatCurrency(currentMonthDue.amount)} is pending for this month. This notification will clear after payment is recorded.`,
-                        timestamp: monthStart.getTime(),
-                        target: 'fees-page'
-                    });
+                if (currentMonthDue && shouldNotifyCurrentMonth) {
+                    const alertTriggerDate = new Date(now.getFullYear(), now.getMonth(), triggerDay, 0, 0, 0);
+                    const monthLabel = formatMonthFeeCardName(currentMonthDue.name);
+                    if (isPastCollectionWindowThisMonth) {
+                        alerts.push({
+                            id: `fee-current-due-${currentYear}-${now.getMonth() + 1}-${currentMonthDue.item?.key || currentMonthDue.name}`,
+                            type: 'fee',
+                            icon: 'fa-clock',
+                            title: `${monthLabel} Fee Overdue`,
+                            message: `${monthLabel} fee of ${formatCurrency(currentMonthDue.amount)} is overdue (Collection window: ${windowText} of this month). Please settle it at the earliest.`,
+                            timestamp: nowTs,
+                            target: 'fees-page'
+                        });
+                    } else {
+                        alerts.push({
+                            id: `fee-current-due-${currentYear}-${now.getMonth() + 1}-${currentMonthDue.item?.key || currentMonthDue.name}`,
+                            type: 'fee',
+                            icon: 'fa-calendar-check',
+                            title: `${monthLabel} Fee Due (${windowText})`,
+                            message: `${monthLabel} fee of ${formatCurrency(currentMonthDue.amount)} is due for this month (Collection dates: ${windowText}). Please pay before the ${formatOrdinalDayLabel(effectiveEndDay)}.`,
+                            timestamp: alertTriggerDate.getTime(),
+                            target: 'fees-page'
+                        });
+                    }
                 }
 
                 const monthOrder = getAcademicMonthSequence(currentYear);
@@ -1296,7 +1351,7 @@ window.AppSession?.guardStudentPage?.();
                             type: 'fee',
                             icon: 'fa-clock',
                             title: `${formatMonthFeeCardName(due.name)} Fee Overdue`,
-                            message: `${formatMonthFeeCardName(due.name)} fee of ${formatCurrency(due.amount)} is overdue. Please clear it before the next month cycle.`,
+                            message: `${formatMonthFeeCardName(due.name)} fee of ${formatCurrency(due.amount)} is overdue from previous month(s). Please clear it immediately.`,
                             timestamp: nowTs,
                             target: 'fees-page'
                         });
@@ -3113,6 +3168,12 @@ window.AppSession?.guardStudentPage?.();
                     setTimeout(() => { fitText('header-title'); }, 50);
                     renderVersionInfo();
                     defaultFee = conf.defaultFee || 200;
+                    feeCollectionConfig = {
+                        startDay: Math.min(31, Math.max(1, parseInt(conf.feeCollectionStartDay, 10) || 1)),
+                        endDay: Math.min(31, Math.max(1, parseInt(conf.feeCollectionEndDay, 10) || 10)),
+                        notifyMode: conf.feeNotifyMode || 'month_start',
+                        notifyDaysBefore: Math.min(28, Math.max(1, parseInt(conf.feeNotifyDaysBefore, 10) || 5))
+                    };
                     feeItems = conf.feeItems || [];
                     paymentDetails = {
                         accountName: conf.paymentAccountName || conf.paymentUpiName || '',

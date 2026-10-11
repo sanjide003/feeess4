@@ -205,7 +205,7 @@ const activateTab = (targetId, { updateHash = true } = {}) => {
 
     const mainApp = document.getElementById('app');
     if (mainApp) {
-        if (safeTargetId === 'master-ledger-page' || safeTargetId === 'fee-page') {
+        if (safeTargetId === 'master-ledger-page' || safeTargetId === 'fee-page' || safeTargetId === 'conc-group-page') {
             mainApp.style.maxWidth = '99vw';
             mainApp.style.width = '99vw';
             mainApp.style.padding = '12px 10px';
@@ -3515,7 +3515,7 @@ const groupConcGroupSearchText = (group = {}, members = []) => [
     ...members.flatMap((member) => [member.name, member.adm, member.class, member.guardian, member.father])
 ].map((value) => String(value || '').toLowerCase()).join(' ');
 
-let concGroupActiveView = 'both'; // 'both' | 'concession' | 'group'
+let concGroupActiveView = 'concession'; // 'concession' | 'group'
 
 const renderConcessionGroupOverview = () => {
     const yearSelect = document.getElementById('conc-group-year-select');
@@ -3571,7 +3571,7 @@ const renderConcessionGroupOverview = () => {
         viewTabsWrap.addEventListener('click', (e) => {
             const btn = e.target.closest('[data-conc-view]');
             if (!btn) return;
-            concGroupActiveView = btn.dataset.concView || 'both';
+            concGroupActiveView = btn.dataset.concView === 'group' ? 'group' : 'concession';
             viewTabsWrap.querySelectorAll('.conc-view-tab-btn').forEach((b) => {
                 const isActive = b.dataset.concView === concGroupActiveView;
                 b.className = isActive
@@ -3718,14 +3718,12 @@ const renderConcessionGroupOverview = () => {
                         <tr>
                             <th class="py-2.5 px-3 w-24 text-center border-r border-slate-200">Group #</th>
                             <th class="py-2.5 px-3 border-r border-slate-200 min-w-[260px]">Group Members (Students)</th>
-                            <th class="py-2.5 px-3 w-24 text-center border-r border-slate-200">Classes</th>
                             <th class="py-2.5 px-3 w-32 text-right">Group Fee</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-200">
                         ${groupEntries.map(({ group, members }, idx) => {
                             const primaryGuardian = members.map((m) => m.guardian || m.father).find(Boolean) || '';
-                            const distinctClasses = [...new Set(members.map((m) => m.class).filter(Boolean))];
                             const groupFeeDisplay = group.fee ? `₹${escapeHtml(String(group.fee))}/mo` : `₹${escapeHtml(String(defaultFee || 200))}/mo`;
 
                             const membersSubRows = members.map((member, mIdx) => `
@@ -3755,11 +3753,6 @@ const renderConcessionGroupOverview = () => {
                                     ${primaryGuardian ? `<div class="text-[10px] font-bold text-slate-500 mb-1 px-1.5 flex items-center gap-1"><i class="fas fa-house-user text-blue-500"></i> Guardian: <span class="text-slate-700">${escapeHtml(primaryGuardian)}</span></div>` : ''}
                                     <div class="divide-y divide-slate-100">${membersSubRows}</div>
                                 </td>
-                                <td class="py-3 px-3 text-center border-r border-slate-100">
-                                    <div class="flex flex-wrap items-center justify-center gap-1">
-                                        ${distinctClasses.map((cls) => `<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 font-bold text-[10px] border border-slate-200">${escapeHtml(cls)}</span>`).join('') || '-'}
-                                    </div>
-                                </td>
                                 <td class="py-3 px-3 text-right whitespace-nowrap">
                                     <span class="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-100 text-blue-900 font-mono font-extrabold text-xs border border-blue-200">
                                         ${groupFeeDisplay}
@@ -3777,12 +3770,10 @@ const renderConcessionGroupOverview = () => {
 
     const contentEl = document.getElementById('conc-group-content');
     if (contentEl) {
-        if (concGroupActiveView === 'concession') {
-            contentEl.innerHTML = `<div class="grid grid-cols-1 gap-5">${concessionTableHtml}</div>`;
-        } else if (concGroupActiveView === 'group') {
+        if (concGroupActiveView === 'group') {
             contentEl.innerHTML = `<div class="grid grid-cols-1 gap-5">${groupTableHtml}</div>`;
         } else {
-            contentEl.innerHTML = `<div class="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">${concessionTableHtml}${groupTableHtml}</div>`;
+            contentEl.innerHTML = `<div class="grid grid-cols-1 gap-5">${concessionTableHtml}</div>`;
         }
     }
 };

@@ -1729,19 +1729,19 @@ document.getElementById('entry-gender').addEventListener('change', (e) => {
     }
 });
 let feeStatusRowLimit = 25;
-let feeStatusVisibleCount = 25;
+let feeStatusPageOffset = 0;
 
 document.getElementById('filter-class').addEventListener('change', () => {
-    feeStatusVisibleCount = feeStatusRowLimit;
+    feeStatusPageOffset = 0;
     renderFeeTable();
 });
 document.getElementById('filter-gender').addEventListener('change', () => {
-    feeStatusVisibleCount = feeStatusRowLimit;
+    feeStatusPageOffset = 0;
     renderFeeTable();
 });
 document.getElementById('fee-status-row-limit')?.addEventListener('change', (e) => {
     feeStatusRowLimit = parseInt(e.target.value, 10) || 25;
-    feeStatusVisibleCount = feeStatusRowLimit;
+    feeStatusPageOffset = 0;
     renderFeeTable();
 });
 
@@ -2982,7 +2982,7 @@ const clearFeeStatusBulkSelection = () => {
         const td = cb.closest('td');
         if (td) td.classList.remove('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
     });
-    document.querySelectorAll('.fee-status-col-all-cb').forEach(cb => {
+    document.querySelectorAll('.fee-status-col-all-cb, .fee-status-row-all-cb').forEach(cb => {
         cb.checked = false;
     });
     updateFeeStatusBulkActionButtons();
@@ -3076,8 +3076,9 @@ const renderFeeTable = () => {
     let html = `<table class="w-full text-xs text-left whitespace-nowrap border-collapse">
         <thead class="table-header sticky top-0 bg-slate-50 z-20 shadow-xs border-b border-slate-200">
             <tr>
-                <th class="p-3 sticky left-0 bg-slate-50 z-30 border-r border-slate-200 text-slate-700 font-extrabold w-20">Adm.No</th>
-                <th class="p-3 sticky left-20 bg-slate-50 z-30 border-r border-slate-200 text-slate-700 font-extrabold min-w-[200px]">Student Name</th>
+                <th class="p-3 sticky left-0 bg-slate-50 z-30 border-r border-slate-200 text-slate-700 font-extrabold w-12 text-center">NO</th>
+                <th class="p-3 sticky left-12 bg-slate-50 z-30 border-r border-slate-200 text-slate-700 font-extrabold w-20">Adm.No</th>
+                <th class="p-3 sticky left-32 bg-slate-50 z-30 border-r border-slate-200 text-slate-700 font-extrabold min-w-[220px]">Student Name</th>
                 ${items.map(i=>`<th class="p-2.5 border-r border-slate-200 text-center font-bold text-slate-700 min-w-[105px]">
                     <div class="flex flex-col items-center gap-1">
                         <span>${escapeHtml(normalizeFeeItemName(i.name))}</span>
@@ -3102,131 +3103,167 @@ const renderFeeTable = () => {
         return 0;
     });
 
-    const totalStudentsCount = list.length;
-    let renderedStudentsCount = 0;
-
+    const orderedEntries = [];
     for (const g of sortedGroups) {
-        if (renderedStudentsCount >= feeStatusVisibleCount) break;
-
         const sortedGroupStudents = [...g.students].sort((a, b) => (a.adm || '').localeCompare(b.adm || '', undefined, { numeric: true }));
-        const remainingAllowance = feeStatusVisibleCount - renderedStudentsCount;
-        const visibleGroupStudents = sortedGroupStudents.slice(0, remainingAllowance);
-        if (visibleGroupStudents.length === 0) break;
-
-        html += `<tr class="bg-slate-100 font-extrabold text-slate-800 tracking-wide text-xs">
-            <td colspan="${items.length+2}" class="p-2.5 px-4 bg-slate-100 border-y border-slate-200">
-                <span class="inline-flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
-                    <span>${escapeHtml(g.class)} - ${escapeHtml(g.gender)}</span>
-                    <span class="text-[11px] text-slate-500 font-semibold font-mono">(${g.students.length} students)</span>
-                </span>
-            </td>
-        </tr>`;
-
-        visibleGroupStudents.forEach(s => {
-            renderedStudentsCount += 1;
-            html += `<tr class="hover:bg-slate-50/80 bg-white transition border-b border-slate-100">
-                <td class="p-2.5 font-mono text-slate-600 sticky left-0 bg-white z-10 border-r border-slate-200">${escapeHtml(s.adm || '-')}</td>
-                <td class="p-2.5 font-bold text-slate-900 border-r border-slate-200 sticky left-20 bg-white z-10">${escapeHtml(s.name)}</td>`;
-
-            items.forEach(i => {
-                const p = allPayments.find(pay => pay.studentId === s.id && isFeeItemMatch(pay.itemKey, i));
-                const selKey = `${s.id}__${i.key}`;
-                const isSelected = selectedFeeStatusCells.has(selKey);
-                const selRing = isSelected ? 'ring-2 ring-blue-500 ring-inset bg-blue-50/70' : '';
-                const itemDefaultAmt = (s.concessionFee !== undefined && s.concessionFee !== null && s.concessionFee !== '' && (i.type || 'month') === 'month')
-                    ? Number(s.concessionFee)
-                    : Number(i.amount || defaultFee || 200);
-
-                if(p) {
-                    html += `<td class="p-1.5 text-center bg-emerald-50/60 border-r border-slate-200 cursor-pointer hover:bg-emerald-100/90 transition group relative ${selRing}"
-                        data-fee-action="view-receipt" data-payment-id="${p.id || ''}" data-student-id="${s.id}" data-item-key="${i.key}"
-                        title="Click to view receipt slip or tick checkbox to bulk edit">
-                        <div class="flex items-center justify-between mb-0.5 px-0.5">
-                            <input type="checkbox" class="fee-status-cell-cb w-3.5 h-3.5 rounded border-emerald-400 text-amber-600 focus:ring-amber-500 cursor-pointer"
-                                data-sel-key="${escapeHtml(selKey)}"
-                                data-student-id="${escapeHtml(s.id)}"
-                                data-item-key="${escapeHtml(i.key)}"
-                                data-item-name="${escapeHtml(normalizeFeeItemName(i.name))}"
-                                data-item-type="${escapeHtml(i.type || 'month')}"
-                                data-default-amount="${itemDefaultAmt}"
-                                data-sel-type="edit"
-                                data-payment-id="${escapeHtml(p.id || '')}"
-                                ${isSelected ? 'checked' : ''}
-                                title="Select to bulk edit">
-                            <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[9px] font-black border border-emerald-200">
-                                <i class="fas fa-check text-[7px]"></i> Paid
-                            </span>
-                        </div>
-                        <div class="flex flex-col items-center justify-center">
-                            <span class="text-[10px] font-mono font-bold text-emerald-950">${p.receiptNo ? `R:${escapeHtml(p.receiptNo)}` : `₹${Number(p.amount||0).toFixed(0)}`}</span>
-                            <span class="text-[9px] text-emerald-600 font-medium">${new Date(p.paymentDate).toLocaleDateString('en-GB')}</span>
-                        </div>
-                    </td>`;
-                } else {
-                    html += `<td class="p-1.5 text-center bg-white border-r border-slate-200 cursor-pointer hover:bg-blue-50/80 transition group relative ${selRing}"
-                        data-fee-action="pay-fee" data-student-id="${s.id}" data-item-key="${i.key}" data-item-name="${escapeHtml(normalizeFeeItemName(i.name))}" data-item-type="${i.type || 'month'}" data-default-amount="${itemDefaultAmt}"
-                        title="Click to record fee payment or tick checkbox for multi-entry">
-                        <div class="flex items-center justify-between mb-1 px-0.5">
-                            <input type="checkbox" class="fee-status-cell-cb w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                data-sel-key="${escapeHtml(selKey)}"
-                                data-student-id="${escapeHtml(s.id)}"
-                                data-item-key="${escapeHtml(i.key)}"
-                                data-item-name="${escapeHtml(normalizeFeeItemName(i.name))}"
-                                data-item-type="${escapeHtml(i.type || 'month')}"
-                                data-default-amount="${itemDefaultAmt}"
-                                data-sel-type="pay"
-                                ${isSelected ? 'checked' : ''}
-                                title="Select to collect together">
-                            <span class="text-[9px] font-bold text-rose-500">Unpaid</span>
-                        </div>
-                        <div class="flex flex-col items-center justify-center">
-                            <button type="button" class="w-full py-0.5 rounded-md bg-blue-50 group-hover:bg-blue-600 group-hover:text-white text-blue-700 text-[10px] font-bold border border-blue-200 transition shadow-2xs">
-                                Pay
-                            </button>
-                        </div>
-                    </td>`;
-                }
+        sortedGroupStudents.forEach(s => {
+            orderedEntries.push({
+                student: s,
+                groupKey: `${g.class}#${g.gender}`,
+                groupClass: g.class,
+                groupGender: g.gender,
+                groupTotalCount: g.students.length
             });
-            html += `</tr>`;
         });
     }
 
+    const totalStudentsCount = orderedEntries.length;
+    if (feeStatusPageOffset >= totalStudentsCount) {
+        feeStatusPageOffset = Math.max(0, Math.floor((totalStudentsCount - 1) / feeStatusRowLimit) * feeStatusRowLimit);
+    }
+
+    const pageSlice = orderedEntries.slice(feeStatusPageOffset, feeStatusPageOffset + feeStatusRowLimit);
+    const startNumber = totalStudentsCount > 0 ? feeStatusPageOffset + 1 : 0;
+    const endNumber = feeStatusPageOffset + pageSlice.length;
+
+    let currentGroupKey = null;
+
+    pageSlice.forEach((entry, idx) => {
+        const s = entry.student;
+        const serialNo = feeStatusPageOffset + idx + 1;
+
+        if (entry.groupKey !== currentGroupKey) {
+            currentGroupKey = entry.groupKey;
+            html += `<tr class="bg-slate-100 font-extrabold text-slate-800 tracking-wide text-xs">
+                <td colspan="${items.length+3}" class="p-2.5 px-4 bg-slate-100 border-y border-slate-200">
+                    <span class="inline-flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                        <span>${escapeHtml(entry.groupClass)} - ${escapeHtml(entry.groupGender)}</span>
+                        <span class="text-[11px] text-slate-500 font-semibold font-mono">(${entry.groupTotalCount} students)</span>
+                    </span>
+                </td>
+            </tr>`;
+        }
+
+        const isRowAllSelected = items.length > 0 && items.every(i => selectedFeeStatusCells.has(`${s.id}__${i.key}`));
+
+        html += `<tr class="hover:bg-slate-50/80 bg-white transition border-b border-slate-100">
+            <td class="p-2.5 font-bold text-slate-500 text-center sticky left-0 bg-white z-10 border-r border-slate-200 w-12">${serialNo}</td>
+            <td class="p-2.5 font-mono text-slate-600 sticky left-12 bg-white z-10 border-r border-slate-200 w-20">${escapeHtml(s.adm || '-')}</td>
+            <td class="p-2.5 font-bold text-slate-900 border-r border-slate-200 sticky left-32 bg-white z-10 min-w-[220px]">
+                <div class="flex items-center justify-between gap-2">
+                    <span class="truncate">${escapeHtml(s.name)}</span>
+                    <input type="checkbox" class="fee-status-row-all-cb w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0" data-student-id="${escapeHtml(s.id)}" ${isRowAllSelected ? 'checked' : ''} title="Select all fees for ${escapeHtml(s.name)}">
+                </div>
+            </td>`;
+
+        items.forEach(i => {
+            const p = allPayments.find(pay => pay.studentId === s.id && isFeeItemMatch(pay.itemKey, i));
+            const selKey = `${s.id}__${i.key}`;
+            const isSelected = selectedFeeStatusCells.has(selKey);
+            const selRing = isSelected ? 'ring-2 ring-blue-500 ring-inset bg-blue-50/70' : '';
+            const itemDefaultAmt = (s.concessionFee !== undefined && s.concessionFee !== null && s.concessionFee !== '' && (i.type || 'month') === 'month')
+                ? Number(s.concessionFee)
+                : Number(i.amount || defaultFee || 200);
+
+            if(p) {
+                html += `<td class="p-1.5 text-center bg-emerald-50/60 border-r border-slate-200 cursor-pointer hover:bg-emerald-100/90 transition group relative ${selRing}"
+                    data-fee-action="view-receipt" data-payment-id="${p.id || ''}" data-student-id="${s.id}" data-item-key="${i.key}"
+                    title="Click to view receipt slip or tick checkbox to bulk edit">
+                    <div class="flex items-center justify-between mb-0.5 px-0.5">
+                        <input type="checkbox" class="fee-status-cell-cb w-3.5 h-3.5 rounded border-emerald-400 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                            data-sel-key="${escapeHtml(selKey)}"
+                            data-student-id="${escapeHtml(s.id)}"
+                            data-item-key="${escapeHtml(i.key)}"
+                            data-item-name="${escapeHtml(normalizeFeeItemName(i.name))}"
+                            data-item-type="${escapeHtml(i.type || 'month')}"
+                            data-default-amount="${itemDefaultAmt}"
+                            data-sel-type="edit"
+                            data-payment-id="${escapeHtml(p.id || '')}"
+                            ${isSelected ? 'checked' : ''}
+                            title="Select to bulk edit">
+                        <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[9px] font-black border border-emerald-200">
+                            <i class="fas fa-check text-[7px]"></i> Paid
+                        </span>
+                    </div>
+                    <div class="flex flex-col items-center justify-center">
+                        <span class="text-[10px] font-mono font-bold text-emerald-950">${p.receiptNo ? `R:${escapeHtml(p.receiptNo)}` : `₹${Number(p.amount||0).toFixed(0)}`}</span>
+                        <span class="text-[9px] text-emerald-600 font-medium">${new Date(p.paymentDate).toLocaleDateString('en-GB')}</span>
+                    </div>
+                </td>`;
+            } else {
+                html += `<td class="p-1.5 text-center bg-white border-r border-slate-200 cursor-pointer hover:bg-blue-50/80 transition group relative ${selRing}"
+                    data-fee-action="pay-fee" data-student-id="${s.id}" data-item-key="${i.key}" data-item-name="${escapeHtml(normalizeFeeItemName(i.name))}" data-item-type="${i.type || 'month'}" data-default-amount="${itemDefaultAmt}"
+                    title="Click to record fee payment or tick checkbox for multi-entry">
+                    <div class="flex items-center justify-between mb-1 px-0.5">
+                        <input type="checkbox" class="fee-status-cell-cb w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            data-sel-key="${escapeHtml(selKey)}"
+                            data-student-id="${escapeHtml(s.id)}"
+                            data-item-key="${escapeHtml(i.key)}"
+                            data-item-name="${escapeHtml(normalizeFeeItemName(i.name))}"
+                            data-item-type="${escapeHtml(i.type || 'month')}"
+                            data-default-amount="${itemDefaultAmt}"
+                            data-sel-type="pay"
+                            ${isSelected ? 'checked' : ''}
+                            title="Select to collect together">
+                        <span class="text-[9px] font-bold text-rose-500">Unpaid</span>
+                    </div>
+                    <div class="flex flex-col items-center justify-center">
+                        <button type="button" class="w-full py-0.5 rounded-md bg-blue-50 group-hover:bg-blue-600 group-hover:text-white text-blue-700 text-[10px] font-bold border border-blue-200 transition shadow-2xs">
+                            Pay
+                        </button>
+                    </div>
+                </td>`;
+            }
+        });
+        html += `</tr>`;
+    });
+
     html += `</tbody></table>`;
 
-    if (renderedStudentsCount < totalStudentsCount) {
-        const nextBatchCount = Math.min(feeStatusRowLimit, totalStudentsCount - renderedStudentsCount);
+    const hasPrevPage = feeStatusPageOffset > 0;
+    const hasNextPage = endNumber < totalStudentsCount;
+
+    if (totalStudentsCount > 0) {
         html += `
             <div class="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3.5 bg-slate-50 border-t border-slate-200">
                 <span class="text-xs font-bold text-slate-600">
-                    Showing <span class="text-slate-900 font-extrabold">${renderedStudentsCount}</span> of <span class="text-slate-900 font-extrabold">${totalStudentsCount}</span> students
+                    Showing <span class="text-slate-900 font-extrabold">${startNumber} - ${endNumber}</span> of <span class="text-slate-900 font-extrabold">${totalStudentsCount}</span> students
                 </span>
-                <button type="button" id="fee-status-load-next-btn" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition inline-flex items-center gap-2 cursor-pointer">
-                    <span>Next (+${nextBatchCount})</span>
-                    <i class="fas fa-arrow-down text-[10px]"></i>
-                </button>
-            </div>
-        `;
-    } else if (totalStudentsCount > 0) {
-        html += `
-            <div class="flex items-center justify-between px-4 py-2.5 bg-slate-50/70 border-t border-slate-200 text-[11px] font-bold text-slate-500">
-                <span>Showing all ${totalStudentsCount} students</span>
+                <div class="flex items-center gap-2">
+                    <button type="button" id="fee-status-prev-btn" ${!hasPrevPage ? 'disabled' : ''} class="px-4 py-2 ${hasPrevPage ? 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 cursor-pointer' : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'} rounded-xl text-xs font-extrabold shadow-2xs transition inline-flex items-center gap-1.5">
+                        <i class="fas fa-arrow-left text-[10px]"></i>
+                        <span>Previous</span>
+                    </button>
+                    <button type="button" id="fee-status-load-next-btn" ${!hasNextPage ? 'disabled' : ''} class="px-5 py-2 ${hasNextPage ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'} rounded-xl text-xs font-extrabold shadow-xs transition inline-flex items-center gap-1.5">
+                        <span>Next</span>
+                        <i class="fas fa-arrow-right text-[10px]"></i>
+                    </button>
+                </div>
             </div>
         `;
     }
 
-    const prevScrollTop = cont.scrollTop;
     const prevScrollLeft = cont.scrollLeft;
     cont.innerHTML = html;
-    cont.scrollTop = prevScrollTop;
+    cont.scrollTop = 0;
     cont.scrollLeft = prevScrollLeft;
 
-    document.getElementById('fee-status-load-next-btn')?.addEventListener('click', () => {
-        feeStatusVisibleCount += feeStatusRowLimit;
-        renderFeeTable();
+    document.getElementById('fee-status-prev-btn')?.addEventListener('click', () => {
+        if (feeStatusPageOffset > 0) {
+            feeStatusPageOffset = Math.max(0, feeStatusPageOffset - feeStatusRowLimit);
+            renderFeeTable();
+        }
     });
 
-    // Attach checkbox listeners for Fee Status
+    document.getElementById('fee-status-load-next-btn')?.addEventListener('click', () => {
+        if (feeStatusPageOffset + feeStatusRowLimit < totalStudentsCount) {
+            feeStatusPageOffset += feeStatusRowLimit;
+            renderFeeTable();
+        }
+    });
+
+    // Attach column header checkbox listeners for Fee Status
     cont.querySelectorAll('.fee-status-col-all-cb').forEach(colCb => {
         colCb.addEventListener('click', (e) => e.stopPropagation());
         colCb.addEventListener('change', () => {
@@ -3236,6 +3273,41 @@ const renderFeeTable = () => {
             const targetCbs = unpaidCbs.length > 0
                 ? unpaidCbs
                 : Array.from(cont.querySelectorAll(`.fee-status-cell-cb[data-item-key="${CSS.escape(itemKey)}"]`));
+
+            targetCbs.forEach(cb => {
+                cb.checked = shouldCheck;
+                const selKey = cb.dataset.selKey;
+                const td = cb.closest('td');
+                if (shouldCheck) {
+                    selectedFeeStatusCells.set(selKey, {
+                        studentId: cb.dataset.studentId,
+                        itemKey: cb.dataset.itemKey,
+                        itemName: cb.dataset.itemName,
+                        itemType: cb.dataset.itemType || 'month',
+                        defaultAmount: Number(cb.dataset.defaultAmount || defaultFee || 200),
+                        type: cb.dataset.selType,
+                        paymentId: cb.dataset.paymentId || ''
+                    });
+                    if (td) td.classList.add('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
+                } else {
+                    selectedFeeStatusCells.delete(selKey);
+                    if (td) td.classList.remove('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
+                }
+            });
+            updateFeeStatusBulkActionButtons();
+        });
+    });
+
+    // Attach student row checkbox listeners for Fee Status
+    cont.querySelectorAll('.fee-status-row-all-cb').forEach(rowCb => {
+        rowCb.addEventListener('click', (e) => e.stopPropagation());
+        rowCb.addEventListener('change', () => {
+            const studentId = rowCb.dataset.studentId;
+            const shouldCheck = rowCb.checked;
+            const unpaidRowCbs = Array.from(cont.querySelectorAll(`.fee-status-cell-cb[data-student-id="${CSS.escape(studentId)}"][data-sel-type="pay"]`));
+            const targetCbs = unpaidRowCbs.length > 0
+                ? unpaidRowCbs
+                : Array.from(cont.querySelectorAll(`.fee-status-cell-cb[data-student-id="${CSS.escape(studentId)}"]`));
 
             targetCbs.forEach(cb => {
                 cb.checked = shouldCheck;
@@ -3292,7 +3364,7 @@ window.renderFeeTable = renderFeeTable;
 
 // Fee Status table click delegation for interactive cells
 document.getElementById('fee-table-container')?.addEventListener('click', (e) => {
-    if (e.target.closest('.fee-status-cell-cb') || e.target.closest('.fee-status-col-all-cb')) {
+    if (e.target.closest('.fee-status-cell-cb') || e.target.closest('.fee-status-col-all-cb') || e.target.closest('.fee-status-row-all-cb')) {
         return;
     }
     const viewCell = e.target.closest('[data-fee-action="view-receipt"]');

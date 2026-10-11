@@ -31,7 +31,7 @@ const filters = {
 };
 
 let ledgerRowLimit = 25;
-let ledgerVisibleCount = 25;
+let ledgerPageOffset = 0;
 
 // Bulk Selection State for Master Fee Ledger
 // Key: `${unitId}__${month}`, Value: { unitId, month, type: 'pay' | 'edit', paymentId }
@@ -77,7 +77,7 @@ export const clearLedgerBulkSelection = () => {
         const cell = cb.closest('td');
         if (cell) cell.classList.remove('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
     });
-    document.querySelectorAll('.ledger-col-select-all-cb').forEach(cb => {
+    document.querySelectorAll('.ledger-col-select-all-cb, .ledger-row-select-all-cb').forEach(cb => {
         cb.checked = false;
     });
     updateLedgerBulkActionButtons();
@@ -363,7 +363,13 @@ const renderLedgerTable = () => {
     }
 
     const totalUnitsCount = list.length;
-    const visibleList = list.slice(0, ledgerVisibleCount);
+    if (ledgerPageOffset >= totalUnitsCount) {
+        ledgerPageOffset = Math.max(0, Math.floor((totalUnitsCount - 1) / ledgerRowLimit) * ledgerRowLimit);
+    }
+
+    const visibleList = list.slice(ledgerPageOffset, ledgerPageOffset + ledgerRowLimit);
+    const startNumber = totalUnitsCount > 0 ? ledgerPageOffset + 1 : 0;
+    const endNumber = ledgerPageOffset + visibleList.length;
 
     let html = `
         <table class="min-w-full text-xs text-left border-collapse border border-slate-200 bg-white shadow-sm master-ledger-sticky-table">
@@ -371,7 +377,7 @@ const renderLedgerTable = () => {
                 <tr>
                     <th class="px-2.5 py-3.5 text-center border-r border-slate-200 w-12 sticky left-0 bg-slate-50 z-35">NO</th>
                     <th class="px-2.5 py-3.5 text-center border-r border-slate-200 w-16 sticky left-12 bg-slate-50 z-35">CLASS</th>
-                    <th class="px-3.5 py-3.5 border-r border-slate-200 min-w-[210px] sticky left-28 bg-slate-50 z-35">STUDENT NAME</th>
+                    <th class="px-3.5 py-3.5 border-r border-slate-200 min-w-[220px] sticky left-28 bg-slate-50 z-35">STUDENT NAME</th>
                     <th class="px-3.5 py-3.5 border-r border-slate-200 min-w-[190px]">GUARDIAN & CONTACT</th>
                     <th class="px-3 py-3.5 text-center border-r border-slate-200 min-w-[130px] text-amber-900 bg-amber-50/50">GROUP SETUP</th>
                     <th class="px-2.5 py-3.5 text-center border-r border-slate-200 min-w-[110px] text-emerald-900 bg-emerald-50/50">EXTRA FEES</th>
@@ -390,7 +396,9 @@ const renderLedgerTable = () => {
     `;
 
     visibleList.forEach((unit, idx) => {
+        const serialNo = ledgerPageOffset + idx + 1;
         const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40';
+        const isRowAllSelected = STANDARD_ACADEMIC_MONTHS.every(m => selectedLedgerCells.has(`${unit.id}__${m}`));
 
         // Student Names markup with numbering and gender badges
         const studentNamesHtml = unit.students.map((s, sIdx) => {
@@ -428,7 +436,7 @@ const renderLedgerTable = () => {
             <tr class="${rowBg} hover:bg-blue-50/40 transition-colors">
                 <!-- NO -->
                 <td class="px-2.5 py-3 text-center font-bold text-slate-500 border-r border-slate-200 sticky left-0 ${rowBg} z-20">
-                    ${idx + 1}
+                    ${serialNo}
                 </td>
 
                 <!-- CLASS -->
@@ -438,8 +446,11 @@ const renderLedgerTable = () => {
 
                 <!-- STUDENT NAME -->
                 <td class="px-3.5 py-3 border-r border-slate-200 sticky left-28 ${rowBg} z-20">
-                    <div class="space-y-0.5">
-                        ${studentNamesHtml}
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="space-y-0.5 min-w-0">
+                            ${studentNamesHtml}
+                        </div>
+                        <input type="checkbox" class="ledger-row-select-all-cb w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0" data-unit-id="${escapeHtml(unit.id)}" ${isRowAllSelected ? 'checked' : ''} title="Select all months for this student/group">
                     </div>
                 </td>
 
@@ -537,36 +548,46 @@ const renderLedgerTable = () => {
         </table>
     `;
 
-    if (visibleList.length < totalUnitsCount) {
-        const nextBatchCount = Math.min(ledgerRowLimit, totalUnitsCount - visibleList.length);
+    const hasPrevPage = ledgerPageOffset > 0;
+    const hasNextPage = endNumber < totalUnitsCount;
+
+    if (totalUnitsCount > 0) {
         html += `
             <div class="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3.5 bg-slate-50 border-t border-slate-200">
                 <span class="text-xs font-bold text-slate-600">
-                    Showing <span class="text-slate-900 font-extrabold">${visibleList.length}</span> of <span class="text-slate-900 font-extrabold">${totalUnitsCount}</span> records
+                    Showing <span class="text-slate-900 font-extrabold">${startNumber} - ${endNumber}</span> of <span class="text-slate-900 font-extrabold">${totalUnitsCount}</span> records
                 </span>
-                <button type="button" id="ledger-load-next-btn" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition inline-flex items-center gap-2 cursor-pointer">
-                    <span>Next (+${nextBatchCount})</span>
-                    <i class="fas fa-arrow-down text-[10px]"></i>
-                </button>
-            </div>
-        `;
-    } else if (totalUnitsCount > 0) {
-        html += `
-            <div class="flex items-center justify-between px-4 py-2.5 bg-slate-50/70 border-t border-slate-200 text-[11px] font-bold text-slate-500">
-                <span>Showing all ${totalUnitsCount} records</span>
+                <div class="flex items-center gap-2">
+                    <button type="button" id="ledger-prev-btn" ${!hasPrevPage ? 'disabled' : ''} class="px-4 py-2 ${hasPrevPage ? 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 cursor-pointer' : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'} rounded-xl text-xs font-extrabold shadow-2xs transition inline-flex items-center gap-1.5">
+                        <i class="fas fa-arrow-left text-[10px]"></i>
+                        <span>Previous</span>
+                    </button>
+                    <button type="button" id="ledger-load-next-btn" ${!hasNextPage ? 'disabled' : ''} class="px-5 py-2 ${hasNextPage ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'} rounded-xl text-xs font-extrabold shadow-xs transition inline-flex items-center gap-1.5">
+                        <span>Next</span>
+                        <i class="fas fa-arrow-right text-[10px]"></i>
+                    </button>
+                </div>
             </div>
         `;
     }
 
-    const prevScrollTop = tableContainer.scrollTop;
     const prevScrollLeft = tableContainer.scrollLeft;
     tableContainer.innerHTML = html;
-    tableContainer.scrollTop = prevScrollTop;
+    tableContainer.scrollTop = 0;
     tableContainer.scrollLeft = prevScrollLeft;
 
+    document.getElementById('ledger-prev-btn')?.addEventListener('click', () => {
+        if (ledgerPageOffset > 0) {
+            ledgerPageOffset = Math.max(0, ledgerPageOffset - ledgerRowLimit);
+            renderLedgerTable();
+        }
+    });
+
     document.getElementById('ledger-load-next-btn')?.addEventListener('click', () => {
-        ledgerVisibleCount += ledgerRowLimit;
-        renderLedgerTable();
+        if (ledgerPageOffset + ledgerRowLimit < totalUnitsCount) {
+            ledgerPageOffset += ledgerRowLimit;
+            renderLedgerTable();
+        }
     });
 
     // Attach event handlers for interactive checkboxes & buttons
@@ -623,6 +644,41 @@ const attachTableEventHandlers = (currentUnits) => {
         });
     });
 
+    // 1b-row. Student Row "Select All Months for Student/Group" Checkboxes
+    document.querySelectorAll('.ledger-row-select-all-cb').forEach(rowCb => {
+        rowCb.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+        rowCb.addEventListener('change', () => {
+            const unitId = rowCb.dataset.unitId;
+            const shouldCheck = rowCb.checked;
+            const unpaidRowCbs = Array.from(document.querySelectorAll(`.ledger-cell-select-cb[data-unit-id="${CSS.escape(unitId)}"][data-sel-type="pay"]`));
+            const targetCbs = unpaidRowCbs.length > 0
+                ? unpaidRowCbs
+                : Array.from(document.querySelectorAll(`.ledger-cell-select-cb[data-unit-id="${CSS.escape(unitId)}"]`));
+
+            targetCbs.forEach(cb => {
+                cb.checked = shouldCheck;
+                const selKey = cb.dataset.selKey;
+                const td = cb.closest('td');
+                if (shouldCheck) {
+                    selectedLedgerCells.set(selKey, {
+                        unitId: cb.dataset.unitId,
+                        month: cb.dataset.month,
+                        type: cb.dataset.selType,
+                        paymentId: cb.dataset.paymentId || '',
+                        fee: Number(cb.dataset.fee || 200)
+                    });
+                    if (td) td.classList.add('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
+                } else {
+                    selectedLedgerCells.delete(selKey);
+                    if (td) td.classList.remove('ring-2', 'ring-blue-500', 'ring-inset', 'bg-blue-50/70');
+                }
+            });
+            updateLedgerBulkActionButtons();
+        });
+    });
+
     // 1c. Individual Cell Checkboxes
     document.querySelectorAll('.ledger-cell-select-cb').forEach(cb => {
         cb.addEventListener('click', (e) => {
@@ -652,7 +708,7 @@ const attachTableEventHandlers = (currentUnits) => {
     const tableContainer = document.getElementById('master-ledger-table-container');
     if (tableContainer) {
         tableContainer.onclick = (e) => {
-            if (e.target.closest('.ledger-cell-select-cb') || e.target.closest('.ledger-col-select-all-cb')) {
+            if (e.target.closest('.ledger-cell-select-cb') || e.target.closest('.ledger-col-select-all-cb') || e.target.closest('.ledger-row-select-all-cb')) {
                 return;
             }
             const viewCell = e.target.closest('[data-ledger-action="view-receipt"]');
@@ -948,7 +1004,7 @@ const resetFilters = () => {
     filters.studentSort = 'DEFAULT';
     filters.genderMode = 'MIXED';
     filters.statusFilter = 'ALL';
-    ledgerVisibleCount = ledgerRowLimit;
+    ledgerPageOffset = 0;
 
     const searchInput = document.getElementById('ledger-search-input');
     if (searchInput) searchInput.value = '';
@@ -997,7 +1053,7 @@ export const initMasterLedgerModule = () => {
     if (rowLimitSelect) {
         rowLimitSelect.addEventListener('change', (e) => {
             ledgerRowLimit = parseInt(e.target.value, 10) || 25;
-            ledgerVisibleCount = ledgerRowLimit;
+            ledgerPageOffset = 0;
             renderLedgerTable();
         });
     }
@@ -1007,7 +1063,7 @@ export const initMasterLedgerModule = () => {
     if (searchInput) {
         searchInput.addEventListener('input', (e) => {
             filters.search = e.target.value;
-            ledgerVisibleCount = ledgerRowLimit;
+            ledgerPageOffset = 0;
             renderLedgerTable();
         });
     }
@@ -1017,7 +1073,7 @@ export const initMasterLedgerModule = () => {
     if (classFilter) {
         classFilter.addEventListener('change', (e) => {
             filters.classFilter = e.target.value;
-            ledgerVisibleCount = ledgerRowLimit;
+            ledgerPageOffset = 0;
             renderLedgerTable();
         });
     }
@@ -1027,7 +1083,7 @@ export const initMasterLedgerModule = () => {
     if (classOrder) {
         classOrder.addEventListener('change', (e) => {
             filters.classOrder = e.target.value;
-            ledgerVisibleCount = ledgerRowLimit;
+            ledgerPageOffset = 0;
             renderLedgerTable();
         });
     }
@@ -1037,7 +1093,7 @@ export const initMasterLedgerModule = () => {
     if (studentSort) {
         studentSort.addEventListener('change', (e) => {
             filters.studentSort = e.target.value;
-            ledgerVisibleCount = ledgerRowLimit;
+            ledgerPageOffset = 0;
             renderLedgerTable();
         });
     }
@@ -1047,7 +1103,7 @@ export const initMasterLedgerModule = () => {
     if (genderMode) {
         genderMode.addEventListener('change', (e) => {
             filters.genderMode = e.target.value;
-            ledgerVisibleCount = ledgerRowLimit;
+            ledgerPageOffset = 0;
             renderLedgerTable();
         });
     }
@@ -1057,7 +1113,7 @@ export const initMasterLedgerModule = () => {
     if (statusFilter) {
         statusFilter.addEventListener('change', (e) => {
             filters.statusFilter = e.target.value;
-            ledgerVisibleCount = ledgerRowLimit;
+            ledgerPageOffset = 0;
             renderLedgerTable();
         });
     }

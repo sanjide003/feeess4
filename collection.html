@@ -99,18 +99,61 @@
                     <div id="staff-name-display" class="text-blue-800 font-bold truncate text-sm">Loading...</div>
                 </div>
                 
-                <li><a href="#dashboard" class="nav-link tab-link active" data-target="dashboard-page"><i class="fas fa-tachometer-alt text-lg w-6"></i> Dashboard</a></li>
-                <li><a href="#home" id="nav-fee-entry" class="nav-link tab-link" data-target="home-page"><i class="fas fa-edit text-lg w-6"></i> Fee Entry</a></li>
-                <li><a href="#bulk-upload" class="nav-link tab-link" data-target="bulk-upload-page"><i class="fas fa-file-excel text-lg w-6"></i> Bulk Upload</a></li>
-                <li><a href="#donation" class="nav-link tab-link" data-target="donation-page"><i class="fas fa-hand-holding-heart text-lg w-6"></i> Donation Entry</a></li>
-                <li><a href="#history" id="nav-history" class="nav-link tab-link" data-target="history-page"><i class="fas fa-history text-lg w-6"></i> History</a></li>
-                <li><a href="#fee" class="nav-link tab-link" data-target="fee-page"><i class="fas fa-list text-lg w-6"></i> Fee Status</a></li>
-                <li><a href="#master-ledger" id="nav-master-ledger" class="nav-link tab-link" data-target="master-ledger-page"><i class="fas fa-table-cells text-lg w-6"></i> Master Fee Ledger</a></li>
-                <li><a href="#conc-group" class="nav-link tab-link" data-target="conc-group-page"><i class="fas fa-users-viewfinder text-lg w-6"></i> Concession & Group</a></li>
-                <li><a href="#monthly" id="nav-monthly" class="nav-link tab-link" data-target="monthly-collected-page"><i class="fas fa-chart-bar text-lg w-6"></i> Monthly Report</a></li>
-                <li id="collector-wise-monthly-tab" class="hidden"><a href="#collector-wise" class="nav-link tab-link" data-target="collector-wise-monthly-page"><i class="fas fa-users text-lg w-6"></i> Collector-wise Monthly Total</a></li>
-                <li><a href="#students" class="nav-link tab-link" data-target="students-page"><i class="fas fa-user-graduate text-lg w-6"></i> Students</a></li>
-                <li><a href="#my-class" class="nav-link tab-link" data-target="my-class-page"><i class="fas fa-school text-lg w-6"></i> My Class</a></li>
+                <!-- 1. Dashboard -->
+                <li data-menu-group="dashboard">
+                    <a href="#dashboard" class="nav-link tab-link active" data-target="dashboard-page" data-main-group="dashboard"><i class="fas fa-tachometer-alt text-lg w-6"></i> Dashboard</a>
+                </li>
+
+                <!-- 2. Fee Collection Group -->
+                <li class="nav-group-item" data-menu-group="collection">
+                    <button type="button" class="nav-group-toggle" data-group-toggle="collection" aria-expanded="false">
+                        <span class="flex items-center gap-2.5"><i class="fas fa-hand-holding-dollar text-base w-5 text-center text-blue-600"></i> <span>Fee Collection</span></span>
+                        <i class="fas fa-chevron-down text-xs text-slate-400 transition-transform duration-200 group-chevron"></i>
+                    </button>
+                    <ul class="nav-sub-list hidden" data-group-list="collection">
+                        <li><a href="#home" id="nav-fee-entry" class="nav-link nav-sub-link tab-link" data-target="home-page" data-main-group="collection"><i class="fas fa-edit text-sm w-5"></i> Fee Entry</a></li>
+                        <li><a href="#bulk-upload" class="nav-link nav-sub-link tab-link" data-target="bulk-upload-page" data-main-group="collection"><i class="fas fa-file-excel text-sm w-5"></i> Bulk Upload</a></li>
+                        <li><a href="#donation" class="nav-link nav-sub-link tab-link" data-target="donation-page" data-main-group="collection"><i class="fas fa-hand-holding-heart text-sm w-5"></i> Donation Entry</a></li>
+                    </ul>
+                </li>
+
+                <!-- 3. Ledgers & Status Group -->
+                <li class="nav-group-item" data-menu-group="ledgers">
+                    <button type="button" class="nav-group-toggle" data-group-toggle="ledgers" aria-expanded="false">
+                        <span class="flex items-center gap-2.5"><i class="fas fa-table-cells text-base w-5 text-center text-indigo-600"></i> <span>Ledgers & Status</span></span>
+                        <i class="fas fa-chevron-down text-xs text-slate-400 transition-transform duration-200 group-chevron"></i>
+                    </button>
+                    <ul class="nav-sub-list hidden" data-group-list="ledgers">
+                        <li><a href="#fee" class="nav-link nav-sub-link tab-link" data-target="fee-page" data-main-group="ledgers"><i class="fas fa-list text-sm w-5"></i> Fee Status</a></li>
+                        <li><a href="#master-ledger" id="nav-master-ledger" class="nav-link nav-sub-link tab-link" data-target="master-ledger-page" data-main-group="ledgers"><i class="fas fa-table-cells text-sm w-5"></i> Master Fee Ledger</a></li>
+                        <li><a href="#conc-group" class="nav-link nav-sub-link tab-link" data-target="conc-group-page" data-main-group="ledgers"><i class="fas fa-users-viewfinder text-sm w-5"></i> Concession & Group</a></li>
+                    </ul>
+                </li>
+
+                <!-- 4. Reports & History Group -->
+                <li class="nav-group-item" data-menu-group="reports">
+                    <button type="button" class="nav-group-toggle" data-group-toggle="reports" aria-expanded="false">
+                        <span class="flex items-center gap-2.5"><i class="fas fa-chart-pie text-base w-5 text-center text-emerald-600"></i> <span>Reports & History</span></span>
+                        <i class="fas fa-chevron-down text-xs text-slate-400 transition-transform duration-200 group-chevron"></i>
+                    </button>
+                    <ul class="nav-sub-list hidden" data-group-list="reports">
+                        <li><a href="#history" id="nav-history" class="nav-link nav-sub-link tab-link" data-target="history-page" data-main-group="reports"><i class="fas fa-history text-sm w-5"></i> History</a></li>
+                        <li><a href="#monthly" id="nav-monthly" class="nav-link nav-sub-link tab-link" data-target="monthly-collected-page" data-main-group="reports"><i class="fas fa-chart-bar text-sm w-5"></i> Monthly Report</a></li>
+                        <li id="collector-wise-monthly-tab" class="hidden"><a href="#collector-wise" class="nav-link nav-sub-link tab-link" data-target="collector-wise-monthly-page" data-main-group="reports"><i class="fas fa-users text-sm w-5"></i> Collector-wise Monthly Total</a></li>
+                    </ul>
+                </li>
+
+                <!-- 5. Students & Class Group -->
+                <li class="nav-group-item" data-menu-group="students">
+                    <button type="button" class="nav-group-toggle" data-group-toggle="students" aria-expanded="false">
+                        <span class="flex items-center gap-2.5"><i class="fas fa-user-graduate text-base w-5 text-center text-amber-600"></i> <span>Students & Class</span></span>
+                        <i class="fas fa-chevron-down text-xs text-slate-400 transition-transform duration-200 group-chevron"></i>
+                    </button>
+                    <ul class="nav-sub-list hidden" data-group-list="students">
+                        <li><a href="#students" class="nav-link nav-sub-link tab-link" data-target="students-page" data-main-group="students"><i class="fas fa-user-graduate text-sm w-5"></i> Students</a></li>
+                        <li><a href="#my-class" class="nav-link nav-sub-link tab-link" data-target="my-class-page" data-main-group="students"><i class="fas fa-school text-sm w-5"></i> My Class</a></li>
+                    </ul>
+                </li>
                 
                 <div class="border-t border-gray-100 my-1"></div>
                 <li><a href="#" id="open-tab-settings-btn" class="nav-link"><i class="fas fa-sliders-h text-lg w-6"></i> Settings</a></li>
@@ -120,6 +163,62 @@
             </ul>
         </div>
     </header>
+
+    <!-- Main Tab & Sub-Tab Navigation Bar -->
+    <div id="collection-grouped-nav" class="collection-grouped-nav-shell">
+        <div class="collection-grouped-nav-inner">
+            <!-- Row 1: Main Category Tabs -->
+            <div class="collection-main-tabs" role="tablist" aria-label="Main Categories">
+                <button type="button" class="collection-main-tab active" data-main-tab="dashboard">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </button>
+                <button type="button" class="collection-main-tab" data-main-tab="collection">
+                    <i class="fas fa-hand-holding-dollar"></i>
+                    <span>Fee Collection</span>
+                </button>
+                <button type="button" class="collection-main-tab" data-main-tab="ledgers">
+                    <i class="fas fa-table-cells"></i>
+                    <span>Ledgers & Status</span>
+                </button>
+                <button type="button" class="collection-main-tab" data-main-tab="reports">
+                    <i class="fas fa-chart-pie"></i>
+                    <span>Reports & History</span>
+                </button>
+                <button type="button" class="collection-main-tab" data-main-tab="students">
+                    <i class="fas fa-user-graduate"></i>
+                    <span>Students & Class</span>
+                </button>
+            </div>
+
+            <!-- Row 2: Contextual Sub-Tabs Bar -->
+            <div id="collection-sub-tabs-wrap" class="collection-sub-tabs-wrap hidden">
+                <!-- Sub-tabs for Fee Collection -->
+                <div class="collection-sub-tabs hidden" data-sub-group="collection">
+                    <a href="#home" class="collection-sub-tab tab-link" data-target="home-page" data-bar-tab="true"><i class="fas fa-edit"></i><span>Fee Entry</span></a>
+                    <a href="#bulk-upload" class="collection-sub-tab tab-link" data-target="bulk-upload-page" data-bar-tab="true"><i class="fas fa-file-excel"></i><span>Bulk Upload</span></a>
+                    <a href="#donation" class="collection-sub-tab tab-link" data-target="donation-page" data-bar-tab="true"><i class="fas fa-hand-holding-heart"></i><span>Donation Entry</span></a>
+                </div>
+                <!-- Sub-tabs for Ledgers & Status -->
+                <div class="collection-sub-tabs hidden" data-sub-group="ledgers">
+                    <a href="#fee" class="collection-sub-tab tab-link" data-target="fee-page" data-bar-tab="true"><i class="fas fa-list"></i><span>Fee Status</span></a>
+                    <a href="#master-ledger" class="collection-sub-tab tab-link" data-target="master-ledger-page" data-bar-tab="true"><i class="fas fa-table-cells"></i><span>Master Fee Ledger</span></a>
+                    <a href="#conc-group" class="collection-sub-tab tab-link" data-target="conc-group-page" data-bar-tab="true"><i class="fas fa-users-viewfinder"></i><span>Concession & Group</span></a>
+                </div>
+                <!-- Sub-tabs for Reports & History -->
+                <div class="collection-sub-tabs hidden" data-sub-group="reports">
+                    <a href="#history" class="collection-sub-tab tab-link" data-target="history-page" data-bar-tab="true"><i class="fas fa-history"></i><span>History</span></a>
+                    <a href="#monthly" class="collection-sub-tab tab-link" data-target="monthly-collected-page" data-bar-tab="true"><i class="fas fa-chart-bar"></i><span>Monthly Report</span></a>
+                    <a href="#collector-wise" id="collector-wise-sub-tab" class="collection-sub-tab tab-link hidden" data-target="collector-wise-monthly-page" data-bar-tab="true"><i class="fas fa-users"></i><span>Collector-wise Total</span></a>
+                </div>
+                <!-- Sub-tabs for Students & Class -->
+                <div class="collection-sub-tabs hidden" data-sub-group="students">
+                    <a href="#students" class="collection-sub-tab tab-link" data-target="students-page" data-bar-tab="true"><i class="fas fa-user-graduate"></i><span>Students</span></a>
+                    <a href="#my-class" class="collection-sub-tab tab-link" data-target="my-class-page" data-bar-tab="true"><i class="fas fa-school"></i><span>My Class</span></a>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <main id="app">
         <div id="page-content">

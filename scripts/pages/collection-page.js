@@ -145,26 +145,163 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// TABS LOGIC
+// TABS LOGIC (Main Tab & Sub-Tab Hierarchy)
+const MAIN_TAB_GROUPS = {
+    dashboard: ['dashboard-page'],
+    collection: ['home-page', 'bulk-upload-page', 'donation-page'],
+    ledgers: ['fee-page', 'master-ledger-page', 'conc-group-page'],
+    reports: ['history-page', 'monthly-collected-page', 'collector-wise-monthly-page'],
+    students: ['students-page', 'my-class-page']
+};
+
+const TARGET_TO_MAIN_GROUP = Object.entries(MAIN_TAB_GROUPS).reduce((acc, [groupKey, targets]) => {
+    targets.forEach((t) => { acc[t] = groupKey; });
+    return acc;
+}, {});
+
+const lastActiveSubTabByGroup = {
+    dashboard: 'dashboard-page',
+    collection: 'home-page',
+    ledgers: 'fee-page',
+    reports: 'history-page',
+    students: 'students-page'
+};
+
 const links = Array.from(document.querySelectorAll('.tab-link'));
 const pages = Array.from(document.querySelectorAll('.page-content'));
 const defaultTabId = 'dashboard-page';
-const linkItems = links.map((link) => ({ link, target: link.dataset.target, listItem: link.closest('li'), isBottomNav: link.dataset.bottomNav === 'true' }));
-const getToggleableLinks = () => linkItems.filter((item) => item.target && !item.isBottomNav && !NON_TOGGLE_TAB_TARGETS.has(item.target));
+const linkItems = links.map((link) => ({
+    link,
+    target: link.dataset.target,
+    listItem: link.closest('li'),
+    isBottomNav: link.dataset.bottomNav === 'true',
+    isBarTab: link.dataset.barTab === 'true'
+}));
+const getToggleableLinks = () => linkItems.filter((item) => item.target && !item.isBottomNav && !item.isBarTab && !NON_TOGGLE_TAB_TARGETS.has(item.target));
+
+const isSubTabAllowedAndVisible = (targetId) => {
+    if (targetId === 'collector-wise-monthly-page' && !isCurrentAdmin) return false;
+    const prefs = readTabPrefsFromLocal();
+    if (!NON_TOGGLE_TAB_TARGETS.has(targetId) && prefs[targetId] === false) return false;
+    return true;
+};
+
+const getFirstAvailableTargetInGroup = (groupKey) => {
+    const candidates = MAIN_TAB_GROUPS[groupKey] || [];
+    const memoryTarget = lastActiveSubTabByGroup[groupKey];
+    if (memoryTarget && candidates.includes(memoryTarget) && isSubTabAllowedAndVisible(memoryTarget)) {
+        return memoryTarget;
+    }
+    return candidates.find((t) => isSubTabAllowedAndVisible(t)) || candidates[0] || defaultTabId;
+};
+
+const expandHamburgerGroup = (groupKey, expand = true) => {
+    const toggleBtn = document.querySelector(`.nav-group-toggle[data-group-toggle="${groupKey}"]`);
+    const subList = document.querySelector(`.nav-sub-list[data-group-list="${groupKey}"]`);
+    if (!toggleBtn || !subList) return;
+    subList.classList.toggle('hidden', !expand);
+    toggleBtn.setAttribute('aria-expanded', expand ? 'true' : 'false');
+    const chevron = toggleBtn.querySelector('.group-chevron');
+    if (chevron) chevron.classList.toggle('rotate-180', expand);
+};
+
+// Hamburger group accordion click handlers
+document.querySelectorAll('.nav-group-toggle').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const groupKey = btn.dataset.groupToggle;
+        const subList = document.querySelector(`.nav-sub-list[data-group-list="${groupKey}"]`);
+        const isCurrentlyHidden = subList ? subList.classList.contains('hidden') : true;
+        // Collapse other groups for clean accordion feel
+        Object.keys(MAIN_TAB_GROUPS).forEach((key) => {
+            if (key !== 'dashboard') expandHamburgerGroup(key, key === groupKey ? isCurrentlyHidden : false);
+        });
+    });
+});
+
+// Top Main Tab bar click handlers
+document.querySelectorAll('.collection-main-tab').forEach((mainBtn) => {
+    mainBtn.addEventListener('click', () => {
+        const groupKey = mainBtn.dataset.mainTab;
+        if (!groupKey) return;
+        const targetId = getFirstAvailableTargetInGroup(groupKey);
+        activateTab(targetId);
+    });
+});
+
+const syncMainAndSubTabUI = (activeTargetId) => {
+    const activeGroup = TARGET_TO_MAIN_GROUP[activeTargetId] || 'dashboard';
+    lastActiveSubTabByGroup[activeGroup] = activeTargetId;
+
+    // 1. Highlight active Main Tab button in top bar
+    document.querySelectorAll('.collection-main-tab').forEach((btn) => {
+        const isGroupActive = btn.dataset.mainTab === activeGroup;
+        btn.classList.toggle('active', isGroupActive);
+        btn.setAttribute('aria-selected', isGroupActive ? 'true' : 'false');
+    });
+
+    // 2. Show/Hide Sub-Tabs row in top bar
+    const subTabsWrap = document.getElementById('collection-sub-tabs-wrap');
+    if (subTabsWrap) {
+        if (activeGroup === 'dashboard') {
+            subTabsWrap.classList.add('hidden');
+        } else {
+            subTabsWrap.classList.remove('hidden');
+            document.querySelectorAll('.collection-sub-tabs').forEach((groupEl) => {
+                groupEl.classList.toggle('hidden', groupEl.dataset.subGroup !== activeGroup);
+            });
+        }
+    }
+
+    // 3. Highlight active parent group in Hamburger Menu & auto-expand active group
+    document.querySelectorAll('.nav-group-toggle').forEach((btn) => {
+        const groupKey = btn.dataset.groupToggle;
+        const isCurrentGroup = groupKey === activeGroup;
+        btn.classList.toggle('active-group', isCurrentGroup);
+        expandHamburgerGroup(groupKey, isCurrentGroup);
+    });
+};
+
 const applyTabVisibilityPreferences = () => {
     const prefs = readTabPrefsFromLocal();
     getToggleableLinks().forEach(({ target, listItem }) => {
+        if (target === 'collector-wise-monthly-page' && !isCurrentAdmin) {
+            listItem?.classList.add('hidden');
+            return;
+        }
         const isVisible = prefs[target] !== false;
         listItem?.classList.toggle('hidden', !isVisible);
     });
+
+    // Also sync visibility to the top sub-tab bar links
+    linkItems.filter((item) => item.isBarTab).forEach(({ link, target }) => {
+        if (target === 'collector-wise-monthly-page') {
+            link.classList.toggle('hidden', !isCurrentAdmin || prefs[target] === false);
+            return;
+        }
+        const isVisible = prefs[target] !== false;
+        link.classList.toggle('hidden', !isVisible);
+    });
+
+    // Hide entire Main Group if all its sub-tabs are hidden
+    Object.entries(MAIN_TAB_GROUPS).forEach(([groupKey, targets]) => {
+        if (groupKey === 'dashboard') return;
+        const hasAnyVisible = targets.some((t) => isSubTabAllowedAndVisible(t));
+        const mainBtn = document.querySelector(`.collection-main-tab[data-main-tab="${groupKey}"]`);
+        const menuGroupLi = document.querySelector(`.nav-group-item[data-menu-group="${groupKey}"]`);
+        mainBtn?.classList.toggle('hidden', !hasAnyVisible);
+        menuGroupLi?.classList.toggle('hidden', !hasAnyVisible);
+    });
+
     const currentTarget = getTargetFromHash(window.location.hash);
-    const currentLink = getLinkForTarget(currentTarget);
-    if (currentLink && currentLink.closest('li')?.classList.contains('hidden')) {
+    if (!isSubTabAllowedAndVisible(currentTarget)) {
         activateTab(defaultTabId);
+    } else {
+        syncMainAndSubTabUI(currentTarget);
     }
 };
 
-const getLinkForTarget = (targetId) => links.find(link => link.dataset.target === targetId);
+const getLinkForTarget = (targetId) => links.find(link => link.dataset.target === targetId && !link.dataset.bottomNav && !link.dataset.barTab) || links.find(link => link.dataset.target === targetId);
 const getTargetFromHash = (hashValue) => {
     if (!hashValue) return defaultTabId;
     const normalizedHash = hashValue.startsWith('#') ? hashValue : `#${hashValue}`;
@@ -203,12 +340,16 @@ const activateTab = (targetId, { updateHash = true } = {}) => {
         page.classList.toggle('hidden', page.id !== safeTargetId);
     });
 
+    syncMainAndSubTabUI(safeTargetId);
+
+    const groupedNav = document.getElementById('collection-grouped-nav');
     const mainApp = document.getElementById('app');
     if (mainApp) {
         if (safeTargetId === 'master-ledger-page' || safeTargetId === 'fee-page' || safeTargetId === 'conc-group-page') {
             mainApp.style.maxWidth = '99vw';
             mainApp.style.width = '99vw';
             mainApp.style.padding = '12px 10px';
+            groupedNav?.classList.add('is-fullwidth');
             document.body.classList.add('ledger-fullwidth');
             if (safeTargetId === 'master-ledger-page') syncMasterLedgerState();
             if (safeTargetId === 'fee-page' && typeof renderFeeTable === 'function') renderFeeTable();
@@ -216,6 +357,7 @@ const activateTab = (targetId, { updateHash = true } = {}) => {
             mainApp.style.maxWidth = '';
             mainApp.style.width = '';
             mainApp.style.padding = '';
+            groupedNav?.classList.remove('is-fullwidth');
             document.body.classList.remove('ledger-fullwidth');
         }
     }
@@ -4457,6 +4599,8 @@ onAuthStateChanged(auth, async (user) => {
     const displayEl = document.getElementById('staff-name-display');
     setResultPageNavVisibility(isCurrentAdmin || staffAccess?.result === true);
     document.getElementById('collector-wise-monthly-tab')?.classList.toggle('hidden', !isCurrentAdmin);
+    document.getElementById('collector-wise-sub-tab')?.classList.toggle('hidden', !isCurrentAdmin);
+    applyTabVisibilityPreferences();
     if (isCurrentAdmin) { displayEl.textContent = "ADMINISTRATOR"; }
 
     onSnapshot(collection(db, `${BASE_PATH}/staff`), (snap) => {

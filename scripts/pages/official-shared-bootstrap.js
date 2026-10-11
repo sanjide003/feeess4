@@ -37,11 +37,25 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       staffSearch: ''
     };
 
+    const extractStudentPhoto = (obj = {}) => {
+      const prof = (obj?.profile && typeof obj.profile === 'object') ? obj.profile : {};
+      const custom = (obj?.customValues && typeof obj.customValues === 'object') ? obj.customValues : {};
+      const candidates = [
+        obj?.photo, obj?.image, obj?.photoUrl, obj?.photo_url, obj?.avatar,
+        prof?.photo, prof?.image, prof?.photoUrl, prof?.photo_url,
+        custom?.photo, custom?.image
+      ];
+      for (const c of candidates) {
+        if (typeof c === 'string') {
+          const trimmed = c.trim();
+          if (trimmed && !trimmed.includes('assets/images/logo.png')) return trimmed;
+        }
+      }
+      return '';
+    };
+
     const hasValidAvatarImage = (obj = {}) => {
-      const raw = obj?.photo || obj?.image || obj?.photoUrl || obj?.photo_url || obj?.avatar || obj?.customValues?.photo || '';
-      if (!raw || typeof raw !== 'string') return false;
-      const trimmed = raw.trim();
-      return trimmed !== '' && !trimmed.includes('assets/images/logo.png');
+      return Boolean(extractStudentPhoto(obj));
     };
 
     const getPersonInitials = (name = '') => {
@@ -54,7 +68,7 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
 
     const renderAvatarMarkup = (obj = {}, name = '', sizeClass = 'w-9 h-9 rounded-xl text-xs') => {
       const initials = escapeHtml(getPersonInitials(name || obj?.name || 'User'));
-      const gender = String(obj?.gender || '').trim().toLowerCase();
+      const gender = String(obj?.gender || obj?.profile?.gender || '').trim().toLowerCase();
       const toneClass = gender === 'female'
         ? 'bg-pink-100 text-pink-700 border-pink-200'
         : 'bg-indigo-100 text-indigo-700 border-indigo-200';
@@ -62,29 +76,51 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
         const photoUrl = getPhoto(obj);
         return `
           <div class="relative ${sizeClass} overflow-hidden border border-slate-200 bg-slate-100 flex-shrink-0 mx-auto">
-            <img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(name || 'Avatar')}" class="w-full h-full object-cover" onerror="this.style.display='none';this.nextElementSibling.classList.remove('hidden');">
+            <img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(name || 'Profile')}" class="w-full h-full object-cover" onerror="this.style.display='none';this.nextElementSibling.classList.remove('hidden');">
             <div class="hidden w-full h-full flex items-center justify-center font-extrabold ${toneClass}">${initials}</div>
           </div>`;
       }
       return `<div class="${sizeClass} border ${toneClass} flex items-center justify-center font-extrabold flex-shrink-0 mx-auto select-none" title="${escapeHtml(name || 'User')}">${initials}</div>`;
     };
 
-    const getStudentForSelectedYear = (student = {}) => {
-      const selectedYear = officialFilters.academicYearId || activeAcademicYearId;
-      if (!selectedYear || (activeAcademicYearId && selectedYear === activeAcademicYearId)) {
-        const isGraduatedInActive = String(student.class || '').toUpperCase() === 'GRADUATED';
-        if (isGraduatedInActive) return null;
+    const filterStudentByAcademicYear = (student = {}, selectedYear = '') => {
+      const targetYear = String(selectedYear || activeAcademicYearId || '').trim();
+      if (!targetYear) {
+        const isGrad = String(student.class || '').toUpperCase() === 'GRADUATED';
+        return isGrad ? null : student;
+      }
+
+      const yearRecord = student.academicYears?.[targetYear];
+      if (yearRecord && typeof yearRecord === 'object') {
+        const merged = {
+          ...student,
+          class: yearRecord.class || student.class,
+          status: yearRecord.status || student.status,
+          isActive: yearRecord.status ? yearRecord.status === 'active' : student.isActive,
+          concessionFee: yearRecord.concessionFee !== undefined ? yearRecord.concessionFee : student.concessionFee
+        };
+        if (String(merged.class || '').toUpperCase() === 'GRADUATED') return null;
+        return merged;
+      }
+
+      const stuYear = String(student.academicYear || '').trim();
+      if (stuYear) {
+        if (stuYear !== targetYear) return null;
+        if (String(student.class || '').toUpperCase() === 'GRADUATED') return null;
         return student;
       }
-      const yearRecord = student.academicYears?.[selectedYear];
-      if (!yearRecord) return null;
-      return {
-        ...student,
-        class: yearRecord.class || student.class,
-        status: yearRecord.status || student.status,
-        isActive: yearRecord.status ? yearRecord.status === 'active' : student.isActive,
-        concessionFee: yearRecord.concessionFee !== undefined ? yearRecord.concessionFee : student.concessionFee
-      };
+
+      if (!activeAcademicYearId || targetYear === activeAcademicYearId) {
+        if (String(student.class || '').toUpperCase() === 'GRADUATED') return null;
+        return student;
+      }
+
+      return null;
+    };
+
+    const getStudentForSelectedYear = (student = {}) => {
+      const selectedYear = officialFilters.academicYearId || activeAcademicYearId;
+      return filterStudentByAcademicYear(student, selectedYear);
     };
 
     const getStudentsForCurrentAcademicYear = () => {
@@ -213,7 +249,7 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
     const getVisibleEntries = (obj = {}, skipKeys = []) => Object.entries(obj || {}).filter(([k, v]) => !skipKeys.includes(k) && v !== undefined && v !== null && String(valueToDisplay(v)).trim() !== '');
     const renderKeyValueGrid = (obj = {}, skipKeys = []) => renderEntriesGrid(getVisibleEntries(obj, skipKeys).map(([key, value]) => ({ key, label: toLabel(key), value })));
     const getPhoto = (obj = {}) => {
-        const rawPhoto = obj.photo || obj.image || obj.logo || '';
+        const rawPhoto = extractStudentPhoto(obj) || obj.logo || '';
         return (rawPhoto && rawPhoto.startsWith('data:')) ? rawPhoto : (sanitizeUrl(rawPhoto) || 'assets/images/logo.png');
     };
     const getStudentClass = (student = {}) => String(student.class || '--').trim() || '--';
@@ -941,11 +977,21 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
 
       const hiddenSystemKeys = new Set([
         'id', 'photo', 'image', 'photoUrl', 'photo_url', 'avatar', 'logo',
-        'academicYears', 'isActive', 'left', 'admDate', 'aadhaar', 'aadhar',
-        'phone', 'fatherMobile', 'mother_mobile',
+        'profile', 'concessionUpdatedAt', 'concessionAppliedBy', 'concession_updated_at', 'concession_applied_by',
+        'academicYears', 'academicYear', 'isActive', 'left', 'admDate', 'aadhaar', 'aadhar',
+        'phone', 'fatherMobile', 'mother_mobile', 'studentClass', 'guardian', 'createdAt', 'updatedAt',
         ...coreAdminColumns.map((c) => c.key)
       ]);
-      const extraKeys = [...new Set(filteredStudents.flatMap((student) => Object.keys(student || {})))].filter((key) => !hiddenSystemKeys.has(key));
+      const isHiddenExtraKey = (key = '') => {
+        if (hiddenSystemKeys.has(key)) return true;
+        const lower = String(key || '').toLowerCase().replace(/[\s_.-]+/g, '');
+        return lower === 'profile'
+          || lower === 'concessionupdatedat'
+          || lower === 'concessionupdated'
+          || lower === 'concessionappliedby'
+          || lower === 'concessionapplied';
+      };
+      const extraKeys = [...new Set(filteredStudents.flatMap((student) => Object.keys(student || {})))].filter((key) => !isHiddenExtraKey(key));
 
       const headerCells = [
         ...coreAdminColumns.map((col) => `<th class="border border-slate-200 px-2.5 py-2 whitespace-nowrap text-left font-extrabold text-slate-700">${escapeHtml(col.label)}</th>`),
@@ -953,13 +999,21 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       ].join('');
 
       const getStudentColValue = (student, key) => {
+        const prof = (student?.profile && typeof student.profile === 'object') ? student.profile : {};
         if (key === 'status') return getStudentStatus(student);
-        if (key === 'adm_date') return student.adm_date || student.admDate || '--';
-        if (key === 'adhaar') return student.adhaar || student.aadhaar || student.aadhar || '--';
-        if (key === 'mobile') return student.mobile || student.phone || student.fatherMobile || '--';
-        if (key === 'motherMobile') return student.motherMobile || student.mother_mobile || '--';
+        if (key === 'adm') return student.adm || prof.admNo || prof.adm || '--';
+        if (key === 'uid') return student.uid || prof.uid || '--';
+        if (key === 'father') return student.father || prof.father || student.guardian || '--';
+        if (key === 'mother') return student.mother || prof.mother || '--';
+        if (key === 'gender') return student.gender || prof.gender || '--';
+        if (key === 'dob') return student.dob || prof.dob || '--';
+        if (key === 'adm_date') return student.adm_date || student.admDate || prof.admDate || prof.adm_date || '--';
+        if (key === 'adhaar') return student.adhaar || student.aadhaar || student.aadhar || prof.adhaar || prof.aadhaar || '--';
+        if (key === 'mobile') return student.mobile || student.phone || student.fatherMobile || prof.mobile || prof.phone || '--';
+        if (key === 'motherMobile') return student.motherMobile || student.mother_mobile || prof.motherMobile || '--';
+        if (key === 'address') return student.address || prof.address || '--';
         if (key === 'concessionFee') return hasStudentConcession(student) ? `₹${student.concessionFee}` : '--';
-        const val = valueToDisplay(student?.[key]);
+        const val = valueToDisplay(student?.[key] !== undefined ? student[key] : prof?.[key]);
         return val !== '' ? val : '--';
       };
 
@@ -1118,7 +1172,7 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
               <thead>
                 <tr class="bg-slate-100 text-slate-700 border-b border-slate-200">
                   <th class="border border-slate-200 px-2.5 py-2.5 w-12 text-center font-extrabold">NO</th>
-                  <th class="border border-slate-200 px-2 py-2.5 text-center w-14 font-extrabold">Avatar</th>
+                  <th class="border border-slate-200 px-2 py-2.5 text-center w-14 font-extrabold">Profile</th>
                   ${headerCells}
                   <th class="border border-slate-200 px-2.5 py-2.5 text-left font-extrabold">Group</th>
                 </tr>
@@ -2108,22 +2162,7 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
 
     const getStudentsForBuilderYear = () => {
       const selectedYear = builderConfig.academicYearId || officialFilters.academicYearId || activeAcademicYearId;
-      return allStudents.map((student) => {
-        if (!selectedYear || (activeAcademicYearId && selectedYear === activeAcademicYearId)) {
-          const isGraduatedInActive = String(student.class || '').toUpperCase() === 'GRADUATED';
-          if (isGraduatedInActive) return null;
-          return student;
-        }
-        const yearRecord = student.academicYears?.[selectedYear];
-        if (!yearRecord) return null;
-        return {
-          ...student,
-          class: yearRecord.class || student.class,
-          status: yearRecord.status || student.status,
-          isActive: yearRecord.status ? yearRecord.status === 'active' : student.isActive,
-          concessionFee: yearRecord.concessionFee !== undefined ? yearRecord.concessionFee : student.concessionFee
-        };
-      }).filter(Boolean);
+      return allStudents.map((student) => filterStudentByAcademicYear(student, selectedYear)).filter(Boolean);
     };
 
     const buildUnifiedStaffRecords = () => {
@@ -3649,9 +3688,79 @@ import { signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } fro
       categoryAuthConfig = authConfigSnap.exists() ? { categories: {}, ...(authConfigSnap.data() || {}) } : { categories: {} };
       pageAccessConfig = pageAccessSnap.exists() ? { categories: {}, overrides: {}, ...(pageAccessSnap.data() || {}) } : { categories: {}, overrides: {} };
       const yearsData = academicYearsSnap.exists() ? (academicYearsSnap.data() || {}) : {};
-      academicYears = Array.isArray(yearsData.years) ? yearsData.years : [];
-      const activeYearObj = academicYears.find((y) => y.isActive) || academicYears[0];
-      activeAcademicYearId = activeYearObj ? activeYearObj.id : '';
+      const currentYearVal = String(yearsData.currentYear || yearsData.activeYear || '').trim();
+      const rawYearsList = Array.isArray(yearsData.years) ? yearsData.years : [];
+
+      const normalizedYearMap = new Map();
+      rawYearsList.forEach((entry) => {
+        if (!entry) return;
+        if (typeof entry === 'string') {
+          const val = entry.trim();
+          if (val) {
+            normalizedYearMap.set(val, { id: val, name: val, label: val, isActive: val === currentYearVal });
+          }
+          return;
+        }
+        if (typeof entry === 'object') {
+          const id = String(entry.id || entry.label || entry.value || entry.year || entry.name || '').trim();
+          const name = String(entry.name || entry.label || entry.year || entry.value || id).trim();
+          if (!id) return;
+          const isAct = entry.isActive === true
+            || (currentYearVal && (id === currentYearVal || name === currentYearVal));
+          normalizedYearMap.set(id, { ...entry, id, name: name || id, label: name || id, isActive: Boolean(isAct) });
+        }
+      });
+
+      if (currentYearVal && !normalizedYearMap.has(currentYearVal)) {
+        normalizedYearMap.set(currentYearVal, {
+          id: currentYearVal,
+          name: currentYearVal,
+          label: currentYearVal,
+          isActive: true
+        });
+      }
+
+      // Also include any academic years present directly on student records
+      allStudents.forEach((stu) => {
+        const directYear = String(stu?.academicYear || '').trim();
+        if (directYear && !normalizedYearMap.has(directYear)) {
+          normalizedYearMap.set(directYear, {
+            id: directYear,
+            name: directYear,
+            label: directYear,
+            isActive: directYear === currentYearVal
+          });
+        }
+        if (stu?.academicYears && typeof stu.academicYears === 'object') {
+          Object.keys(stu.academicYears).forEach((yrKey) => {
+            const cleanKey = String(yrKey || '').trim();
+            if (cleanKey && !normalizedYearMap.has(cleanKey)) {
+              normalizedYearMap.set(cleanKey, {
+                id: cleanKey,
+                name: cleanKey,
+                label: cleanKey,
+                isActive: cleanKey === currentYearVal
+              });
+            }
+          });
+        }
+      });
+
+      academicYears = Array.from(normalizedYearMap.values()).sort((a, b) =>
+        String(b.name || b.id).localeCompare(String(a.name || a.id), undefined, { numeric: true })
+      );
+
+      const activeYearObj = (currentYearVal && academicYears.find((y) => y.id === currentYearVal || y.name === currentYearVal))
+        || academicYears.find((y) => y.isActive)
+        || academicYears.find((y) => String(y.status || '').toLowerCase() === 'active')
+        || academicYears[0];
+
+      activeAcademicYearId = activeYearObj ? activeYearObj.id : currentYearVal;
+      if (activeAcademicYearId) {
+        academicYears.forEach((y) => {
+          y.isActive = y.id === activeAcademicYearId;
+        });
+      }
       if (!officialFilters.academicYearId && activeAcademicYearId) {
         officialFilters.academicYearId = activeAcademicYearId;
       }
